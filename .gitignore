@@ -1,3 +1,7 @@
+CONTEXT.md
+.cursorrules
+AIcoding_method.md
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
