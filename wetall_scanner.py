@@ -2,6 +2,7 @@ import httpx
 from bs4 import BeautifulSoup
 import datetime
 import os
+import sys
 import psycopg2
 
 # CONFIGURATION : On commence par ton lien de test
@@ -65,7 +66,7 @@ def analyze_stock():
     db_url = os.environ.get("DATABASE_URL")
     if not db_url:
         print("Erreur : la variable d'environnement DATABASE_URL n'est pas définie.")
-        return
+        sys.exit(1)
 
     try:
         conn = psycopg2.connect(db_url)
@@ -74,7 +75,7 @@ def analyze_stock():
         
         for res in results:
             cur.execute(
-                "INSERT INTO wetall_link_history (nom_produit, url_wetall, statut, code_etat, date_scan) "
+                "INSERT INTO wetall_link_history (nom, url_wetall, status, emoji, scan_date) "
                 "VALUES (%s, %s, %s, %s, %s)",
                 (res['nom'], res['url_wetall'], res['status'], res['emoji'], scan_date)
             )
@@ -85,6 +86,7 @@ def analyze_stock():
         print("Résultats insérés dans la base de données avec succès.")
     except Exception as db_e:
         print(f"Erreur lors de l'insertion dans la base de données : {db_e}")
+        sys.exit(1)
 
 if __name__ == "__main__":
     analyze_stock()
