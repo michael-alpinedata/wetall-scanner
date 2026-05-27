@@ -74,8 +74,13 @@ def analyze_stock():
         scan_date = datetime.datetime.now()
         
         for res in results:
+            # On aligne les noms des colonnes sur le DDL :
+            # nom -> nom_produit
+            # status -> statut
+            # emoji -> code_etat
+            # scan_date -> date_scan
             cur.execute(
-                "INSERT INTO wetall_link_history (nom, url_wetall, status, emoji, scan_date) "
+                "INSERT INTO wetall_link_history (nom_produit, url_wetall, statut, code_etat, date_scan) "
                 "VALUES (%s, %s, %s, %s, %s)",
                 (res['nom'], res['url_wetall'], res['status'], res['emoji'], scan_date)
             )
