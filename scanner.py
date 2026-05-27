@@ -8,35 +8,46 @@ import psycopg2
 from psycopg2.extras import DictCursor
 from bs4 import BeautifulSoup
 
+# CONFIGURATION LOGGING
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 logger = logging.getLogger(__name__)
 
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) Gecko/20100101 Firefox/124.0"
 ]
 
 def smart_scan(client, url_wetall):
-    """Logique d'extraction du lien marchand et vérification du stock."""
+    """
+    Scrapeur en 'Slow Mode' optimisé pour les gros volumes.
+    """
+    headers = {
+        "User-Agent": random.choice(USER_AGENTS),
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "fr,fr-FR;q=0.8,en-US;q=0.5,en;q=0.3",
+        "Referer": "https://www.google.com/",
+    }
+    
     try:
-        # 1. Requête sur la page produit Wetall
-        time.sleep(random.uniform(2, 4))
-        resp_wetall = client.get(url_wetall)
+        # --- ÉTAPE 1 : WETALL ---
+        time.sleep(random.uniform(4, 8)) 
+        resp_wetall = client.get(url_wetall, headers=headers)
         if resp_wetall.status_code != 200:
             return f"Erreur Wetall {resp_wetall.status_code}", resp_wetall.status_code, None
 
         soup = BeautifulSoup(resp_wetall.text, 'html.parser')
         buy_link = None
 
-        # Extraction via le formulaire (ta logique fiable)
+        # Extraction via formulaire (WooCommerce)
         btn = soup.find("button", class_="single_add_to_cart_button")
         if btn:
             form = btn.find_parent("form")
             if form and form.get("action"):
                 buy_link = form.get("action")
         
-        # Fallbacks
+        # Fallback lien /out/
         if not buy_link:
             for a in soup.find_all("a", href=True):
                 if "/out/" in a["href"]:
@@ -44,37 +55,48 @@ def smart_scan(client, url_wetall):
                     break
 
         if not buy_link:
-            status = "Rupture de stock" if "rupture" in resp_wetall.text.lower() else "Bouton non trouvé"
+            status = "Rupture de stock" if "en rupture" in resp_wetall.text.lower() else "Bouton non trouvé"
             return status, 200, None
 
-        # 2. Suivi du lien vers le marchand
-        time.sleep(random.uniform(1, 3))
-        resp_marchand = client.get(buy_link)
+        # Correction Amazon (liens relatifs)
+        if buy_link.startswith('/dp/'):
+            buy_link = f"https://www.amazon.fr{buy_link}"
+
+        # --- ÉTAPE 2 : MARCHAND FINAL ---
+        # On simule un temps de réflexion humain avant de cliquer
+        time.sleep(random.uniform(12, 25)) 
+        
+        resp_marchand = client.get(buy_link, headers=headers)
         final_url = str(resp_marchand.url).lower()
         page_content = resp_marchand.text.lower()
         
         status = "OK"
         code = resp_marchand.status_code
 
-        # Logique métier par marchand
-        if "decathlon" in final_url or "decathlon" in page_content:
+        # Logique Marchands
+        if code in [403, 401]:
+            status = "Vérification bloquée (403)"
+        elif code == 404:
+            status = "Lien Brisé (404)"
+        elif "decathlon" in final_url or "decathlon" in page_content:
             if any(x in page_content for x in ["indisponible", "rupture de stock", "en rupture"]):
                 status = "Rupture de stock"
         elif "amazon" in final_url or "amazon" in page_content:
-            if any(m in page_content for m in ["actuellement indisponible", "reapprovisionne"]):
+            markers_amazon = ["actuellement indisponible", "ne sais pas quand cet article sera de nouveau approvisionné"]
+            if any(m in page_content for m in markers_amazon):
                 status = "Rupture de stock"
 
         return status, code, final_url
 
     except Exception as e:
-        logger.error(f"Erreur smart_scan sur {url_wetall}: {e}")
-        return f"Erreur technique", 0, None
+        logger.error(f"Erreur technique sur {url_wetall}: {e}")
+        return "Erreur technique", 0, None
 
 def run_pipeline():
-    """Boucle principale appelée par FastAPI."""
+    """Fonction principale gérant le batch de 250 produits."""
     db_url = os.environ.get("DATABASE_URL")
     if not db_url:
-        logger.error("DATABASE_URL manquante")
+        logger.error("DATABASE_URL manquante.")
         return
 
     try:
@@ -82,7 +104,7 @@ def run_pipeline():
         conn.autocommit = True
         cur = conn.cursor()
 
-        # Récupération des 30 produits les plus anciens à scanner
+        # Récupération des 250 produits les moins récemment scannés
         cur.execute("""
             SELECT p.produit_id, p.url_wetall 
             FROM dim_produit p
@@ -92,7 +114,7 @@ def run_pipeline():
                 GROUP BY produit_id
             ) f ON p.produit_id = f.produit_id
             ORDER BY f.dernier_scan ASC NULLS FIRST
-            LIMIT 30;
+            LIMIT 250;
         """)
         products = cur.fetchall()
 
@@ -100,27 +122,30 @@ def run_pipeline():
             logger.info("Aucun produit à scanner.")
             return
 
-        logger.info(f"Début du batch pour {len(products)} produits...")
+        logger.info(f"DÉMARRAGE BATCH NUIT : {len(products)} produits.")
 
-        headers = {"User-Agent": random.choice(USER_AGENTS), "Referer": "https://www.google.com/"}
-        
-        with httpx.Client(headers=headers, follow_redirects=True, timeout=45.0) as client:
-            for row in products:
+        with httpx.Client(follow_redirects=True, timeout=60.0) as client:
+            for i, row in enumerate(products, 1):
                 p_id = row['produit_id']
-                url = row['url_wetall']
+                url_wetall = row['url_wetall']
                 
-                status, code, final_url = smart_scan(client, url)
+                status, code, final_url = smart_scan(client, url_wetall)
                 
                 cur.execute("""
-                    INSERT INTO fact_stock_status (produit_id, date_scan, status_code, http_code_marchand, url_marchand_finale)
+                    INSERT INTO fact_stock_status 
+                    (produit_id, date_scan, status_code, http_code_marchand, url_marchand_finale)
                     VALUES (%s, %s, %s, %s, %s);
                 """, (p_id, datetime.now(timezone.utc), status, code, final_url))
                 
-                logger.info(f"Produit {p_id} scanné : {status}")
+                if i % 10 == 0:
+                    logger.info(f"Progression : {i}/{len(products)} produits traités.")
+                
+                # Petite pause entre chaque fiche produit pour la discrétion
+                time.sleep(random.uniform(5, 12))
 
         cur.close()
         conn.close()
-        logger.info("Fin du pipeline.")
+        logger.info("BATCH NUIT TERMINÉ.")
 
     except Exception as e:
         logger.error(f"Erreur run_pipeline: {e}")
