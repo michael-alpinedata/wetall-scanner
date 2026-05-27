@@ -15,16 +15,8 @@ jobs:
           python-version: '3.10'
 
       - name: Install dependencies
-        run: pip install httpx beautifulsoup4
+        run: pip install httpx beautifulsoup4 psycopg2-binary
 
       - name: Run Scan
         run: python wetall_scanner.py
-
-      - name: Save Report to Repo
-        run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          git add rapport_scan.md
-          git commit -m "MAJ Rapport Scan - $(date)" || exit 0
-          git push
           

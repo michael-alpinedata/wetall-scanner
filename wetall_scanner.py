@@ -2,6 +2,7 @@ import httpx
 from bs4 import BeautifulSoup
 import datetime
 import os
+import psycopg2
 
 # CONFIGURATION : On commence par ton lien de test
 TARGETS = [
@@ -23,7 +24,7 @@ def analyze_stock():
                 r_wetall = client.get(item['url_wetall'])
                 
                 if r_wetall.status_code != 200:
-                    results.append(f"| {item['nom']} | Erreur Wetall ({r_wetall.status_code}) | ❌ |")
+                    results.append({"nom": item['nom'], "url_wetall": item['url_wetall'], "status": f"Erreur Wetall ({r_wetall.status_code})", "emoji": "❌"})
                     continue
                 
                 soup = BeautifulSoup(r_wetall.text, 'html.parser')
@@ -37,7 +38,7 @@ def analyze_stock():
                         break
                 
                 if not buy_link:
-                    results.append(f"| {item['nom']} | Bouton 'Commander' non trouvé | ⚠️ |")
+                    results.append({"nom": item['nom'], "url_wetall": item['url_wetall'], "status": "Bouton 'Commander' non trouvé", "emoji": "⚠️"})
                     continue
 
                 # 3. Suivre le lien pour voir où il mène (Decathlon, etc.)
@@ -55,18 +56,35 @@ def analyze_stock():
                     status = "Rupture de stock"
                     emoji = "🟠"
                 
-                results.append(f"| {item['nom']} | {status} | {emoji} |")
+                results.append({"nom": item['nom'], "url_wetall": item['url_wetall'], "status": status, "emoji": emoji})
                 
         except Exception as e:
-            results.append(f"| {item['nom']} | Erreur technique : {str(e)} | ❗ |")
+            results.append({"nom": item['nom'], "url_wetall": item.get('url_wetall', ''), "status": f"Erreur technique : {str(e)}", "emoji": "❗"})
 
-    # ÉCRITURE DU RÉSULTAT DANS LE REPO
-    date_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-    report_header = f"\n## Rapport du {date_str}\n| Produit | Statut | État |\n| :--- | :--- | :--- |\n"
-    report_content = report_header + "\n".join(results) + "\n"
-    
-    with open("rapport_scan.md", "a") as f:
-        f.write(report_content)
+    # INSERTION DANS POSTGRESQL
+    db_url = os.environ.get("DATABASE_URL")
+    if not db_url:
+        print("Erreur : la variable d'environnement DATABASE_URL n'est pas définie.")
+        return
+
+    try:
+        conn = psycopg2.connect(db_url)
+        cur = conn.cursor()
+        scan_date = datetime.datetime.now()
+        
+        for res in results:
+            cur.execute(
+                "INSERT INTO wetall_link_history (nom_produit, url_wetall, statut, code_etat, date_scan) "
+                "VALUES (%s, %s, %s, %s, %s)",
+                (res['nom'], res['url_wetall'], res['status'], res['emoji'], scan_date)
+            )
+            
+        conn.commit()
+        cur.close()
+        conn.close()
+        print("Résultats insérés dans la base de données avec succès.")
+    except Exception as db_e:
+        print(f"Erreur lors de l'insertion dans la base de données : {db_e}")
 
 if __name__ == "__main__":
     analyze_stock()
