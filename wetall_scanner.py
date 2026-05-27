@@ -1,106 +1,143 @@
-import httpx
-from bs4 import BeautifulSoup
 import datetime
 import os
 import sys
+import logging
+from bs4 import BeautifulSoup
+import httpx
 import psycopg2
-import random
+from dotenv import load_dotenv
 
-# CONFIGURATION : On commence par ton lien de test
+# 1. CONFIGURATION DU LOGGING
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+logger = logging.getLogger(__name__)
+
+load_dotenv()
+
 TARGETS = [
-    {"nom": "Vélo de Biking", "url_wetall": "https://www.wetall.fr/produit/velo-de-biking-grande-taille/"}
+    {
+        "nom": "Vélo de Biking",
+        "url_wetall": "https://www.wetall.fr/produit/velo-de-biking-grande-taille/",
+    }
 ]
 
 def analyze_stock():
-    user_agents = [
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:123.0) Gecko/20100101 Firefox/123.0",
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3 Safari/605.1.15"
-    ]
-    headers = {
-        "User-Agent": random.choice(user_agents),
-        "Accept-Language": "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7",
-        "Referer": "https://www.google.com/"
-    }
-    
+    scrapeops_api_key = os.environ.get("SCRAPING_API_KEY")
+    db_url = os.environ.get("DATABASE_URL")
+
+    if not scrapeops_api_key or not db_url:
+        logger.error("Variables d'environnement manquantes (SCRAPING_API_KEY ou DATABASE_URL)")
+        sys.exit(1)
+
     results = []
-    
+    proxy_url = "https://proxy.scrapeops.io/v1/"
+
     for item in TARGETS:
-        print(f"Analyse de : {item['nom']}...")
+        logger.info(f"Démarrage analyse : {item['nom']}")
         try:
-            # 1. Aller sur la page Wetall
-            with httpx.Client(follow_redirects=True, headers=headers, timeout=20.0) as client:
-                r_wetall = client.get(item['url_wetall'])
+            # Étape A : Appel ScrapeOps sans JS Rendering
+            params = {
+                "api_key": scrapeops_api_key,
+                "url": item["url_wetall"],
+                "render_js": "false"
+            }
+
+            logger.info(f"Requête ScrapeOps pour: {item['url_wetall']}")
+            with httpx.Client(timeout=45.0) as client:
+                r_wetall = client.get(proxy_url, params=params)
                 
                 if r_wetall.status_code != 200:
-                    results.append({"nom": item['nom'], "url_wetall": item['url_wetall'], "status": f"Erreur Wetall ({r_wetall.status_code})", "emoji": "❌"})
+                    logger.warning(f"Échec Proxy: Code {r_wetall.status_code} - Contenu: {r_wetall.text[:100]}...")
+                    results.append({
+                        "nom": item["nom"], "url_wetall": item["url_wetall"],
+                        "status": f"Erreur Proxy ({r_wetall.status_code})", "emoji": "❌"
+                    })
                     continue
-                
-                soup = BeautifulSoup(r_wetall.text, 'html.parser')
-                
-                # 2. Trouver le lien de redirection (bouton "Commander")
-                # On cherche le lien qui contient "out" ou qui est lié au bouton d'achat
+
+                logger.info("Page Wetall récupérée avec succès. Analyse du DOM...")
+                soup = BeautifulSoup(r_wetall.text, "html.parser")
+
+                # Étape B : Extraction du lien
+                ## DEBUG
+                links = [a['href'] for a in soup.find_all('a', href=True)]
+                logger.info(f"Liens extraits : {links[:5]}...") # Affiche les 5 premiers liens
+                ## END DEBUG
+
+                # Recherche robuste du bouton et de son formulaire
+                btn = soup.find('button', class_='single_add_to_cart_button')
                 buy_link = None
-                for a in soup.find_all('a', href=True):
-                    if "/out/" in a['href'] or "commander" in a.text.lower():
-                        buy_link = a['href']
-                        break
-                
-                if not buy_link:
-                    results.append({"nom": item['nom'], "url_wetall": item['url_wetall'], "status": "Bouton 'Commander' non trouvé", "emoji": "⚠️"})
-                    continue
 
-                # 3. Suivre le lien pour voir où il mène (Decathlon, etc.)
-                r_marchand = client.get(buy_link)
-                final_url = str(r_marchand.url)
-                
-                # 4. Diagnostic de l'état (basé sur ton retour : il est brisé/404)
-                status = "OK"
-                emoji = "✅"
-                
+                if btn:
+                    # On cherche le formulaire qui contient ce bouton
+                    form = btn.find_parent('form')
+                    if form and form.get('action'):
+                        buy_link = form.get('action')
+                        logger.info(f"Lien marchand trouvé dans l'action du formulaire : {buy_link}")
+                else:
+                    # Fallback sur l'ancienne méthode au cas où certains produits utilisent encore des liens simples
+                    for a in soup.find_all('a', href=True):
+                        if "/out/" in a['href']:
+                            buy_link = a['href']
+                            break
+
+                # Étape C : Scan Marchand via Proxy
+                logger.info(f"Suivi du lien marchand via Proxy: {buy_link}")
+                params_marchand = {
+                    "api_key": scrapeops_api_key,
+                    "url": buy_link,
+                    "render_js": "false"
+                }
+                r_marchand = client.get(proxy_url, params=params_marchand, follow_redirects=True)
+                logger.info(f"Réponse proxy marchand atteinte (Code: {r_marchand.status_code})")
+
+                # Étape D : Diagnostic
+                status, emoji = "OK", "✅"
                 if r_marchand.status_code == 404:
-                    status = "Lien Brisé (404 chez le marchand)"
-                    emoji = "❌"
-                elif "decathlon" in final_url and ("indisponible" in r_marchand.text.lower() or "rupture" in r_marchand.text.lower()):
-                    status = "Rupture de stock"
-                    emoji = "🟠"
-                
-                results.append({"nom": item['nom'], "url_wetall": item['url_wetall'], "status": status, "emoji": emoji})
-                
-        except Exception as e:
-            results.append({"nom": item['nom'], "url_wetall": item.get('url_wetall', ''), "status": f"Erreur technique : {str(e)}", "emoji": "❗"})
+                    status, emoji = "Lien Brisé (404)", "❌"
+                elif r_marchand.status_code != 200:
+                    status, emoji = "Vérification bloquée", "🛡️"
+                elif any(x in r_marchand.text.lower() for x in ["indisponible", "rupture"]):
+                    status, emoji = "Rupture de stock", "🟠"
 
-    # INSERTION DANS POSTGRESQL
-    db_url = os.environ.get("DATABASE_URL")
-    if not db_url:
-        print("Erreur : la variable d'environnement DATABASE_URL n'est pas définie.")
-        sys.exit(1)
+                results.append({"nom": item["nom"], "url_wetall": item["url_wetall"], "status": status, "emoji": emoji})
+                logger.info(f"Résultat pour {item['nom']}: {status} {emoji}")
+
+        except Exception as e:
+            logger.exception(f"Erreur inattendue sur {item['nom']}")
+            results.append({
+                "nom": item["nom"], "url_wetall": item.get("url_wetall", ""),
+                "status": f"Erreur technique: {str(e)}", "emoji": "❗"
+            })
+
+    # 3. INSERTION DB
+    if not results:
+        logger.info("Aucun résultat à insérer.")
+        return
 
     try:
+        logger.info(f"Connexion à Neon pour insertion de {len(results)} ligne(s)...")
         conn = psycopg2.connect(db_url)
+        conn.autocommit = True
         cur = conn.cursor()
-        scan_date = datetime.datetime.now()
-        
+        scan_date = datetime.datetime.now(datetime.timezone.utc)
+
         for res in results:
-            # On aligne les noms des colonnes sur le DDL :
-            # nom -> nom_produit
-            # status -> statut
-            # emoji -> code_etat
-            # scan_date -> date_scan
             cur.execute(
-                "INSERT INTO wetall_link_history (nom_produit, url_wetall, statut, code_etat, date_scan) "
-                "VALUES (%s, %s, %s, %s, %s)",
-                (res['nom'], res['url_wetall'], res['status'], res['emoji'], scan_date)
+                "INSERT INTO wetall_link_history (nom_produit, url_wetall, statut, code_etat, date_scan) VALUES (%s, %s, %s, %s, %s)",
+                (res["nom"], res["url_wetall"], res["status"], res["emoji"], scan_date)
             )
-            
-        conn.commit()
+        
         cur.close()
         conn.close()
-        print("Résultats insérés dans la base de données avec succès.")
+        logger.info("Données synchronisées avec Neon avec succès.")
+
     except Exception as db_e:
-        print(f"Erreur lors de l'insertion dans la base de données : {db_e}")
-        sys.exit(1)
+        logger.error(f"Échec de l'écriture en base de données: {db_e}")
 
 if __name__ == "__main__":
     analyze_stock()
