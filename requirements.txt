@@ -4,3 +4,4 @@ httpx
 psycopg2-binary
 python-dotenv
 beautifulsoup4
+curl_cffi==0.7.0
