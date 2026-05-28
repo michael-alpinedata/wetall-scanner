@@ -10,7 +10,7 @@ app = FastAPI()
 API_SECRET = os.environ.get("SCAN_SECRET_KEY", "change_moi_vite")
 
 
-@app.get("/", methods=["GET", "HEAD"])
+@app.api_route("/", methods=["GET", "HEAD"])
 async def read_root():
     return {"status": "ok"}
 
