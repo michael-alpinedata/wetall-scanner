@@ -162,7 +162,7 @@ def smart_scan(client, url_wetall):
 
 
 def run_pipeline():
-    """Fonction principale pour le traitement de nuit (250 produits)."""
+    """Fonction principale pour le traitement de nuit (NB_PRODUCT_SCANNED produits)."""
     db_url = os.environ.get("DATABASE_URL")
     if not db_url:
         logger.error("La variable d'environnement DATABASE_URL est manquante.")
@@ -173,7 +173,7 @@ def run_pipeline():
         conn.autocommit = True
         cur = conn.cursor()
 
-        # Récupération des 250 fiches les plus anciennes ou jamais scannées
+        # Récupération des NB_PRODUCT_SCANNED fiches les plus anciennes ou jamais scannées
         cur.execute(
             """
             SELECT p.produit_id, p.url_wetall 
@@ -184,8 +184,9 @@ def run_pipeline():
                 GROUP BY produit_id
             ) f ON p.produit_id = f.produit_id
             ORDER BY f.dernier_scan ASC NULLS FIRST
-            LIMIT 250;
-        """
+            LIMIT %s;
+        """,
+            (NB_PRODUCT_SCANNED,),
         )
         products = cur.fetchall()
 
@@ -235,4 +236,5 @@ def run_pipeline():
 
 
 if __name__ == "__main__":
+    NB_PRODUCT_SCANNED = 250
     run_pipeline()
