@@ -10,9 +10,9 @@ app = FastAPI()
 API_SECRET = os.environ.get("SCAN_SECRET_KEY", "change_moi_vite")
 
 
-@app.get("/")
-async def root():
-    return {"status": "Service de scan opérationnel"}
+@app.get("/", methods=["GET", "HEAD"])
+async def read_root():
+    return {"status": "ok"}
 
 
 @app.post("/trigger-scan")
