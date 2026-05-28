@@ -84,11 +84,20 @@ def smart_scan(client, url_wetall):
         status = "OK"
         code = resp_marchand.status_code
 
-        # Logique Marchands
+        # --- Logique métier par marchand ---
         if code in [403, 401]:
             status = "Vérification bloquée (403)"
         elif code == 404:
             status = "Lien Brisé (404)"
+
+        # NOUVELLE CONDITION NIKE
+        elif "nike" in final_url or "nike" in page_content:
+            if "le produit recherché n'est plus disponible" in page_content:
+                status = "Rupture de stock"
+            elif any(x in page_content for x in ["indisponible", "rupture de stock"]):
+                status = "Rupture de stock"
+
+        # CONDITIONS EXISTANTES (Amazon, Decathlon)
         elif "decathlon" in final_url or "decathlon" in page_content:
             if any(
                 x in page_content
@@ -96,11 +105,17 @@ def smart_scan(client, url_wetall):
             ):
                 status = "Rupture de stock"
         elif "amazon" in final_url or "amazon" in page_content:
-            markers_amazon = [
+            markers_amazon_rupture = [
                 "actuellement indisponible",
                 "ne sais pas quand cet article sera de nouveau approvisionné",
             ]
-            if any(m in page_content for m in markers_amazon):
+            marker_amazon_erreur = (
+                "l'adresse web que vous avez saisie n'est pas une page fonctionnelle"
+            )
+
+            if marker_amazon_erreur in page_content:
+                status = "Lien Mort (404 déguisé)"
+            elif any(m in page_content for m in markers_amazon_rupture):
                 status = "Rupture de stock"
 
         return status, code, final_url
