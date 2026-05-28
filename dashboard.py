@@ -16,12 +16,13 @@ def get_connection():
     return psycopg2.connect(os.environ.get("DATABASE_URL"))
 
 
+# Supprime le @st.cache_resource qui posait problème
 def load_data():
     query = """
     SELECT 
         f.date_scan, 
         p.nom_produit, 
-        p.url_wetall, -- Ajout de l'URL source
+        p.url_wetall,
         f.status_code, 
         f.http_code_marchand, 
         f.url_marchand_finale
@@ -30,9 +31,17 @@ def load_data():
     ORDER BY f.date_scan DESC
     LIMIT 1000;
     """
-    conn = get_connection()
-    df = pd.read_sql(query, conn)
-    return df
+    try:
+        # On ne met plus @st.cache_resource ici pour forcer une nouvelle
+        # connexion si la précédente a été coupée par Neon
+        with psycopg2.connect(os.environ.get("DATABASE_URL")) as conn:
+            df = pd.read_sql(query, conn)
+        return df
+    except Exception as e:
+        st.error(f"Erreur lors du chargement des données : {e}")
+        return (
+            pd.DataFrame()
+        )  # Retourne un DF vide pour éviter de faire planter les graphiques
 
 
 # 2. INTERFACE
