@@ -1,9 +1,10 @@
-import streamlit as st
-import pandas as pd
-import psycopg2
 import os
-from dotenv import load_dotenv
+
+import pandas as pd
 import plotly.express as px
+import psycopg2
+import streamlit as st
+from dotenv import load_dotenv
 
 load_dotenv()
 
@@ -46,13 +47,33 @@ st.title("📊 Wetall Stock Monitor")
 try:
     df = load_data()
 
+    # Mapping des codes pour une lecture humaine
+    CODE_LABELS = {
+        0: "Erreur Technique (Timeout/Crash)",
+        200: "Succès (OK / Rupture détectée)",
+        401: "Lien Expiré / Privé (401)",
+        403: "Blocage Anti-Bot (403)",
+        404: "Lien Mort (404 Not Found)",
+        500: "Erreur Serveur Marchand (500)",
+    }
+
+    # Utilisation d'une fonction lambda pour le fillna dynamique si le code n'est pas
+    # dans le dico
+    df["label_erreur"] = df["http_code_marchand"].map(CODE_LABELS)
+    df["label_erreur"] = df["label_erreur"].fillna(
+        df["http_code_marchand"].apply(lambda x: f"Autre Erreur ({x})")
+    )
+
+    # On filtre pour ne garder que les anomalies
+    df_anomalies = df[df["http_code_marchand"] != 200]
+
     # --- KPI ---
     col1, col2, col3 = st.columns(3)
     with col1:
         st.metric("Total Scans", len(df))
     with col2:
         ok_count = len(df[df["status_code"] == "OK"])
-        st.metric("Succès (OK)", ok_count, delta=f"{(ok_count/len(df)*100):.1f}%")
+        st.metric("Succès (OK)", ok_count, delta=f"{(ok_count / len(df) * 100):.1f}%")
     with col3:
         err_count = len(df[df["status_code"].str.contains("Erreur|bloquée|Brisé")])
         st.metric("Alertes / Erreurs", err_count, delta_color="inverse")
@@ -73,11 +94,34 @@ try:
         st.plotly_chart(fig_status, use_container_width=True)
 
     with c2:
-        st.subheader("HTTP Codes Marchands")
-        # On filtre les codes 0 (erreurs techniques) pour l'analyse
-        codes_df = df[df["http_code_marchand"] > 0]
-        fig_codes = px.histogram(codes_df, x="http_code_marchand", color="status_code")
-        st.plotly_chart(fig_codes, use_container_width=True)
+        st.subheader("Anomalies Marchands (Détails)")
+
+        # On utilise df_anomalies (qui exclut les succès 200) pour zoomer sur ce qui
+        # pose problème
+        if not df_anomalies.empty:
+            fig_codes = px.histogram(
+                df_anomalies,
+                x="label_erreur",
+                color="status_code",
+                labels={
+                    "label_erreur": "Type d'anomalie",
+                    "count": "Nombre de produits",
+                },
+                category_orders={
+                    "label_erreur": [
+                        "Lien Mort (404 Not Found)",
+                        "Blocage Marchand (403 Forbidden)",
+                        "Erreur Technique (Timeout/Crash)",
+                        "Accès Restreint (401 Unauthorized)",
+                        "Erreur Serveur Marchand (500)",
+                    ]
+                },
+            )
+            # Amélioration du design pour éviter que les longs labels se chevauchent
+            fig_codes.update_layout(xaxis_tickangle=-45)
+            st.plotly_chart(fig_codes, use_container_width=True)
+        else:
+            st.success("Aucune anomalie détectée sur ce lot ! 🎉")
 
     # --- TABLEAU DÉTAILLÉ ---
     st.subheader("Derniers Scans")
