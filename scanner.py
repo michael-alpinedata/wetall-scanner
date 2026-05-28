@@ -9,7 +9,7 @@ import psycopg2
 from bs4 import BeautifulSoup
 from psycopg2.extras import DictCursor
 
-NB_PRODUCT_SCANNED = 250
+NB_PRODUCT_SCANNED = 1000
 
 # CONFIGURATION LOGGING
 logging.basicConfig(
