@@ -1,7 +1,9 @@
 import os
-from fastapi import FastAPI, BackgroundTasks, Header, HTTPException
-from scanner import run_pipeline
+
 from dotenv import load_dotenv
+from fastapi import BackgroundTasks, FastAPI, Header, HTTPException
+
+from scanner import run_pipeline
 
 load_dotenv()
 app = FastAPI()
