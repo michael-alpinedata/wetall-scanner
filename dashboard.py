@@ -11,11 +11,6 @@ st.set_page_config(page_title="Wetall Scan Monitor", layout="wide")
 
 
 # 1. CONNEXION BDD
-@st.cache_resource
-def get_connection():
-    return psycopg2.connect(os.environ.get("DATABASE_URL"))
-
-
 # Supprime le @st.cache_resource qui posait problème
 def load_data():
     query = """
@@ -25,7 +20,8 @@ def load_data():
         p.url_wetall,
         f.status_code, 
         f.http_code_marchand, 
-        f.url_marchand_finale
+        f.url_marchand_finale,
+        f.debug_info
     FROM fact_stock_status f
     JOIN dim_produit p ON f.produit_id = p.produit_id
     ORDER BY f.date_scan DESC
@@ -104,6 +100,7 @@ try:
             "date_scan": st.column_config.DatetimeColumn(
                 "Date", format="DD/MM/YY HH:mm"
             ),
+            "debug_info": st.column_config.TextColumn("Diagnostic Scanner"),
         },
         use_container_width=True,
         hide_index=True,
