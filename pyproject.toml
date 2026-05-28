@@ -16,8 +16,15 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "black>=26.5.1",
     "fastapi>=0.136.3",
     "pre-commit>=4.6.0",
+    "ruff>=0.15.15",
     "uvicorn>=0.48.0",
 ]
+
+[tool.ruff]
+# Applique le style compatible avec Black
+line-length = 88 
+
+[tool.ruff.lint]
+select = ["E", "F", "I"] # E=errors, F=flakes, I=isort (tri imports)

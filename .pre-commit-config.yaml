@@ -1,6 +1,10 @@
 repos:
-  - repo: https://github.com/psf/black
-    rev: 24.4.2
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    # Ruff version v0.4.0 ou ultérieure
+    rev: v0.15.15 
     hooks:
-      - id: black
-        # On peut spécifier à black d'utiliser l'environnement uv si besoin
+      # Linter + Tri des imports (remplace flake8 et isort)
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+      # Formatter (remplace black)
+      - id: ruff-format
