@@ -3,10 +3,11 @@ import os
 import random
 import time
 from datetime import datetime, timezone
+
 import httpx
 import psycopg2
-from psycopg2.extras import DictCursor
 from bs4 import BeautifulSoup
+from psycopg2.extras import DictCursor
 
 NB_PRODUCT_SCANNED = 250
 
@@ -17,150 +18,149 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/122.0.0.0 "
+    "Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/121.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/122.0.0.0 Safari/537.36",
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) Gecko/20100101 Firefox/124.0",
 ]
 
 
+def get_buy_link_from_wetall(soup):
+    """Extrait le lien marchand depuis la soupe HTML de Wetall."""
+    # Stratégie A : Bouton d'achat
+    btn = soup.find("button", class_="single_add_to_cart_button")
+    if btn:
+        form = btn.find_parent("form")
+        if form and form.get("action"):
+            return form.get("action"), "Lien via formulaire"
+
+    # Stratégie B : Liens /out/
+    out_links = [
+        a["href"] for a in soup.find_all("a", href=True) if "/out/" in a["href"]
+    ]
+    if out_links:
+        return out_links[0], "Lien via fallback /out/"
+
+    return None, None
+
+
+def normalize_amazon_url(url):
+    """Corrige les URLs Amazon relatives ou tronquées."""
+    url = url.strip()
+    if url.startswith("/"):
+        return f"https://www.amazon.fr{url}"
+    if url.startswith("dp/"):
+        return f"https://www.amazon.fr/{url}"
+    return url
+
+
+def fetch_with_fallback(client, url, headers):
+    """Effectue la requête avec un fallback vers curl_cffi si bloqué."""
+    # 1er essai
+    resp = client.get(url, headers=headers)
+
+    # Fallback pour les cibles dures
+    if resp.status_code in [403, 401] and any(
+        t in url.lower() for t in ["decathlon", "alltricks"]
+    ):
+        try:
+            from curl_cffi import requests as curl_requests
+
+            resp_curl = curl_requests.get(
+                url, headers=headers, impersonate="chrome", timeout=30
+            )
+            return resp_curl
+        except Exception as e:
+            logger.error(f"Fallback curl_cffi échoué: {e}")
+
+    return resp
+
+
+def analyze_merchant_status(url, html):
+    """Applique les règles métier de détection de stock par marchand."""
+    url, html = url.lower(), html.lower()
+
+    if "nike" in url or "nike" in html:
+        if any(x in html for x in ["plus disponible", "indisponible", "rupture"]):
+            return "Rupture de stock", "Nike : Rupture détectée"
+
+    elif "decathlon" in url or "decathlon" in html:
+        if any(x in html for x in ["indisponible", "rupture", "en rupture"]):
+            return "Rupture de stock", "Decathlon : Rupture détectée"
+
+    elif "amazon" in url or "amazon" in html:
+        if "n'est pas une page fonctionnelle" in html:
+            return "Lien Mort (404 déguisé)", "Amazon : 404 déguisée"
+        if any(
+            m in html for m in ["actuellement indisponible", "nouveau approvisionné"]
+        ):
+            return "Rupture de stock", "Amazon : Rupture détectée"
+
+    return "OK", "Scan réussi"
+
+
+# --- LA FONCTION PRINCIPALE DEVIENT UN ORCHESTRATEUR ---
 def smart_scan(client, url_wetall):
-    """
-    Scrapeur chirurgical avec diagnostic intégré (debug_info)
-    """
     headers = {
         "User-Agent": random.choice(USER_AGENTS),
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "fr,fr-FR;q=0.8,en-US;q=0.5,en;q=0.3",
         "Referer": "https://www.google.com/",
     }
 
-    debug_msg = "Début du scan"
-
     try:
-        # --- ÉTAPE 1 : WETALL ---
+        # ÉTAPE 1 : WETALL
         time.sleep(random.uniform(4, 7))
         resp_wetall = client.get(url_wetall, headers=headers)
-
         if resp_wetall.status_code != 200:
             return (
                 f"Erreur Wetall {resp_wetall.status_code}",
                 resp_wetall.status_code,
                 None,
-                f"Code HTTP Wetall: {resp_wetall.status_code}",
+                "Fail Wetall",
             )
 
         soup = BeautifulSoup(resp_wetall.text, "html.parser")
-        buy_link = None
+        buy_link, debug_msg = get_buy_link_from_wetall(soup)
 
-        # Stratégie A : Bouton d'achat standard WooCommerce
-        btn = soup.find("button", class_="single_add_to_cart_button")
-        if btn:
-            form = btn.find_parent("form")
-            if form and form.get("action"):
-                buy_link = form.get("action")
-                debug_msg = "Lien extrait via formulaire bouton"
-
-        # Stratégie B : Fallback par les liens /out/ (Très fréquent sur Wetall)
+        # Cas particuliers Wetall (variations / rupture)
         if not buy_link:
-            out_links = [
-                a["href"] for a in soup.find_all("a", href=True) if "/out/" in a["href"]
-            ]
-            if out_links:
-                buy_link = out_links[0]
-                debug_msg = "Lien extrait via fallback /out/"
-
-        # Stratégie C : Détection spécifique des produits à variations (tailles/couleurs)
-        if not buy_link and soup.find("form", class_="variations_form"):
-            debug_msg = "Structure à variations détectée (taille requise)"
-            return "Variations (Taille/Couleur)", 200, None, debug_msg
-
-        # Si toujours aucun lien trouvé après toutes les stratégies
-        if not buy_link:
+            if soup.find("form", class_="variations_form"):
+                return "Variations (Taille/Couleur)", 200, None, "Structure variations"
             if "en rupture" in resp_wetall.text.lower():
-                return (
-                    "Rupture de stock",
-                    200,
-                    None,
-                    "Marqueur rupture trouvé sur Wetall",
-                )
-            else:
-                return (
-                    "Bouton non trouvé",
-                    200,
-                    None,
-                    "Aucun bouton ni lien /out/ dans le HTML",
-                )
+                return "Rupture de stock", 200, None, "Marqueur rupture Wetall"
+            return "Bouton non trouvé", 200, None, "Aucun lien extrait"
 
-        # Correction des liens relatifs Amazon
-        if buy_link.startswith("/dp/"):
-            buy_link = f"https://www.amazon.fr{buy_link}"
+        # ÉTAPE 2 : NORMALISATION & MARCHAND FINAL
+        buy_link = normalize_amazon_url(buy_link)
 
-        # --- ÉTAPE 2 : MARCHAND FINAL ---
-        logger.info(
-            f"Redirection marchande identifiée. Simulation de lecture humaine..."
-        )
+        logger.info(f"Scan marchand : {buy_link[:40]}...")
         time.sleep(random.uniform(12, 22))
 
-        resp_marchand = client.get(buy_link, headers=headers)
-        final_url = str(resp_marchand.url).lower()
-        page_content = resp_marchand.text.lower()
+        resp_m = fetch_with_fallback(client, buy_link, headers)
 
-        status = "OK"
-        code = resp_marchand.status_code
-
-        # --- LOGIQUE MÉTIER PAR MARCHAND ---
-        if code in [403, 401]:
-            status = "Vérification bloquée (403)"
-            debug_msg = f"Bloqué par le pare-feu du marchand à l'URL : {final_url[:50]}"
-        elif code == 404:
-            status = "Lien Brisé (404)"
-            debug_msg = "Le serveur marchand renvoie une vraie erreur 404"
-
-        # Condition spécifique Nike
-        elif "nike" in final_url or "nike" in page_content:
-            if "le produit recherché n'est plus disponible" in page_content:
-                status = "Rupture de stock"
-                debug_msg = "Nike : Message 'Produit non disponible' détecté"
-            elif any(x in page_content for x in ["indisponible", "rupture de stock"]):
-                status = "Rupture de stock"
-                debug_msg = "Nike : Terme de rupture standard trouvé"
-
-        # Condition spécifique Decathlon
-        elif "decathlon" in final_url or "decathlon" in page_content:
-            if any(
-                x in page_content
-                for x in ["indisponible", "rupture de stock", "en rupture"]
-            ):
-                status = "Rupture de stock"
-                debug_msg = "Decathlon : Produit détecté hors stock"
-
-        # Condition spécifique Amazon
-        elif "amazon" in final_url or "amazon" in page_content:
-            markers_amazon_rupture = [
-                "actuellement indisponible",
-                "ne sais pas quand cet article sera de nouveau approvisionné",
-            ]
-            marker_amazon_mort = (
-                "l'adresse web que vous avez saisie n'est pas une page fonctionnelle"
+        # ÉTAPE 3 : ANALYSE FINALE
+        if resp_m.status_code in [403, 401]:
+            return (
+                "Vérification bloquée (403)",
+                resp_m.status_code,
+                str(resp_m.url),
+                "Pare-feu marchand",
             )
+        if resp_m.status_code == 404:
+            return "Lien Brisé (404)", 404, str(resp_m.url), "Erreur 404 serveur"
 
-            if marker_amazon_mort in page_content:
-                status = "Lien Mort (404 déguisé)"
-                debug_msg = "Amazon : Page 'Vous cherchez quelque chose ?' interceptée"
-            elif any(m in page_content for m in markers_amazon_rupture):
-                status = "Rupture de stock"
-                debug_msg = "Amazon : Bloc d'indisponibilité standard trouvé"
-
-        else:
-            debug_msg = f"Scan réussi sans détection d'anomalie sur {final_url[:30]}"
-
-        return status, code, final_url, debug_msg
+        status, msg = analyze_merchant_status(str(resp_m.url), resp_m.text)
+        return status, resp_m.status_code, str(resp_m.url), msg
 
     except Exception as e:
-        logger.error(f"Erreur technique rencontrée : {e}")
-        # On capture les 100 premiers caractères de l'erreur Python (Timeout, Connexion refusée, etc.)
-        return "Erreur technique", 0, None, f"Exception Python: {str(e)[:100]}"
+        return "Erreur technique", 0, None, f"Exception: {str(e)[:50]}"
 
 
 def run_pipeline():
@@ -175,7 +175,8 @@ def run_pipeline():
         conn.autocommit = True
         cur = conn.cursor()
 
-        # Récupération des NB_PRODUCT_SCANNED fiches les plus anciennes ou jamais scannées
+        # Récupération des NB_PRODUCT_SCANNED fiches les plus anciennes
+        # ou jamais scannées
         cur.execute(
             """
             SELECT p.produit_id, p.url_wetall 
@@ -210,7 +211,8 @@ def run_pipeline():
                 cur.execute(
                     """
                     INSERT INTO fact_stock_status 
-                    (produit_id, date_scan, status_code, http_code_marchand, url_marchand_finale, debug_info)
+                    (produit_id, date_scan, status_code, http_code_marchand, 
+                    url_marchand_finale, debug_info)
                     VALUES (%s, %s, %s, %s, %s, %s);
                 """,
                     (
