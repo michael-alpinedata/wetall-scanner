@@ -8,6 +8,8 @@ import psycopg2
 from psycopg2.extras import DictCursor
 from bs4 import BeautifulSoup
 
+NB_PRODUCT_SCANNED = 250
+
 # CONFIGURATION LOGGING
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
@@ -236,5 +238,4 @@ def run_pipeline():
 
 
 if __name__ == "__main__":
-    NB_PRODUCT_SCANNED = 250
     run_pipeline()
