@@ -1,7 +1,7 @@
 [project]
 name = "wetall-links-checker"
 version = "0.1.0"
-description = "Add your description here"
+description = "Pipeline de monitoring des liens affiliés Wetall.fr"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
@@ -19,13 +19,20 @@ dependencies = [
 dev = [
     "fastapi>=0.136.3",
     "pre-commit>=4.6.0",
+    "pytest>=8.0.0",
+    "pytest-mock>=3.14.0",
     "ruff>=0.15.15",
     "uvicorn>=0.48.0",
 ]
 
 [tool.ruff]
 # Applique le style compatible avec Black
-line-length = 88 
+line-length = 88
+src = ["src"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I"] # E=errors, F=flakes, I=isort (tri imports)
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
