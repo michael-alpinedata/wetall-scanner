@@ -11,4 +11,4 @@ COPY . .
 EXPOSE 10000
 
 # Commande pour lancer FastAPI avec Uvicorn
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "10000"]
+CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "10000"]
