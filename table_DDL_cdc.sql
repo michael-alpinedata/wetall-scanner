@@ -9,6 +9,6 @@ ADD COLUMN IF NOT EXISTS status_history JSONB NOT NULL DEFAULT '[{"status": "act
 -- (Si status_history est à sa valeur par défaut '1970-01-01T00:00:00Z', on le met à jour)
 UPDATE dim_produit
 SET
-    status_history = jsonb_set(status_history, '{0,timestamp}', to_jsonb(NOW() AT TIME ZONE 'UTC')::text, true)
+    status_history = jsonb_set(status_history, '{0,timestamp}', to_jsonb(NOW() AT TIME ZONE 'UTC'), true)
 WHERE
     status_history = '[{"status": "active", "timestamp": "1970-01-01T00:00:00Z"}]'::jsonb;
