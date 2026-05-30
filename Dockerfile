@@ -17,10 +17,11 @@ ENV PYTHONPATH=/app
 
 # Copie de l'exécutable uv depuis l'image officielle pour le CMD
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uv/bin/
+ENV PATH="/uv/bin:${PATH}"
 
 COPY --from=builder /app/.venv /app/.venv
 COPY . .
 
 EXPOSE 10000
 
-CMD ["/uv/bin/uv", "run", "python", "-m", "src.main"]
+CMD ["uv", "run", "python", "-m", "src.main"]
