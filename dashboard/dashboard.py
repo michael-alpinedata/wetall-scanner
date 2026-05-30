@@ -41,7 +41,21 @@ def load_data():
         )  # Retourne un DF vide pour éviter de faire planter les graphiques
 
 
-# 2. INTERFACE
+# 2. INTERFACE & SÉCURITÉ
+st.sidebar.title("Authentification")
+user = st.sidebar.text_input("Utilisateur")
+password = st.sidebar.text_input("Mot de passe", type="password")
+
+def check_auth(u, p):
+    try:
+        return u == st.secrets["DASHBOARD_USER"] and p == st.secrets["DASHBOARD_PASSWORD"]
+    except KeyError:
+        return False
+
+if not check_auth(user, password):
+    st.warning("Veuillez vous connecter pour accéder aux données.")
+    st.stop()
+
 st.title("📊 Wetall Stock Monitor")
 
 try:

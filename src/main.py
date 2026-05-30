@@ -49,9 +49,9 @@ async def trigger_scan(
 
     Le header `X-Secret-Key` doit correspondre à la variable SCAN_SECRET_KEY.
     """
-    if x_secret_key != API_SECRET:
-        logger.warning("Tentative de déclenchement avec une clé invalide.")
-        raise HTTPException(status_code=403, detail="Clé secrète invalide")
+    if not x_secret_key or x_secret_key != API_SECRET:
+        logger.warning("Tentative de déclenchement avec une clé invalide ou absente.")
+        raise HTTPException(status_code=401, detail="Clé secrète invalide ou absente")
 
     background_tasks.add_task(run_pipeline)
     logger.info("Batch de nuit déclenché via /trigger-scan.")

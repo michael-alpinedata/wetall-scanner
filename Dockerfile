@@ -1,18 +1,25 @@
-FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+# Stage 1: Builder
+FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS builder
+
+ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
 
 WORKDIR /app
-
-# On copie les fichiers de lock/pyproject pour optimiser le cache
 COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-install-project --no-dev
 
-# Installation des dépendances avec uv
-RUN uv sync --frozen
+# Stage 2: Runtime
+FROM python:3.12-slim AS runtime
 
-# Copie du reste du code
+WORKDIR /app
+ENV PYTHONUNBUFFERED=1
+ENV PATH="/app/.venv/bin:$PATH"
+
+# Copie de l'exécutable uv depuis l'image officielle pour le CMD
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uv/bin/
+
+COPY --from=builder /app/.venv /app/.venv
 COPY . .
 
-# On expose le port 8000 par défaut
 EXPOSE 8000
 
-# Commande pour lancer l'API via uv
-CMD ["uv", "run", "python", "src/main.py"]
+CMD ["/uv/bin/uv", "run", "python", "src/main.py"]
