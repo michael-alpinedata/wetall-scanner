@@ -199,10 +199,19 @@ class TestSyncSitemapToDbHttp:
 
 
 class TestSyncSitemapToDbPersistence:
-    def _setup_mocks(self, extract_url_impl, sitemap_text, rowcounts=None):
+    def _setup_mocks(
+        self,
+        extract_url_impl,
+        sitemap_text: str,
+        initial_db_rows: list | None = None,
+        mock_executemany_returns: list[int] | None = None,
+    ):
         """
         Utilitaire centralisant la création des mocks HTTP + DB.
-        `rowcounts` : liste d'entiers simulant cursor.rowcount pour chaque URL.
+        `sitemap_text`: Contenu XML du sitemap.
+        `initial_db_rows`: Liste de dictionnaires simulant les lignes de `dim_produit` déjà en DB.
+        `mock_executemany_returns`: Liste d'entiers, où chaque entier est le `rowcount`
+                                    pour une invocation successive de `cur.executemany`.
         """
         mock_http_client = MagicMock()
         mock_http_client.get.return_value = make_response(
@@ -212,20 +221,24 @@ class TestSyncSitemapToDbPersistence:
         mock_http_ctx.__enter__ = MagicMock(return_value=mock_http_client)
         mock_http_ctx.__exit__ = MagicMock(return_value=False)
 
-        cur = MagicMock()
-        if rowcounts:
-            # Simule des rowcount différents selon l'appel (UPSERT avec/sans insert)
-            cur.rowcount = 1  # valeur par défaut
-            type(cur).rowcount = property(
-                lambda self: rowcounts.pop(0) if rowcounts else 0
-            )
+        mock_cur = MagicMock()
+        mock_conn = MagicMock()
+        mock_conn.cursor.return_value = mock_cur
+        mock_conn.autocommit = True
+
+        # Configure mock_cur.fetchall to return existing products (or empty list by default)
+        mock_cur.fetchall.return_value = initial_db_rows if initial_db_rows is not None else []
+
+        # Configure mock_cur.executemany to return specific rowcounts
+        if mock_executemany_returns:
+            mock_cur.executemany.side_effect = [
+                MagicMock(rowcount=rc) for rc in mock_executemany_returns
+            ]
         else:
-            cur.rowcount = 1  # toujours une nouvelle insertion
+            # Default to a mock with 0 rowcount if no specific counts are provided
+            mock_cur.executemany.return_value = MagicMock(rowcount=0)
 
-        conn = MagicMock()
-        conn.cursor.return_value = cur
-
-        return mock_http_ctx, conn, cur
+        return mock_http_ctx, mock_conn, mock_cur
 
     def test_upsert_called_for_new_product_urls(self, extract_url_impl):
         # Expect 1 executemany call for inserts, with N rows affected (N = num new products)
@@ -258,8 +271,14 @@ class TestSyncSitemapToDbPersistence:
         assert set(inserted_urls) == set(EXPECTED_PRODUCT_URLS)
 
     def test_product_url_passed_to_insert(self, extract_url_impl):
-        """L'URL exacte du produit doit figurer dans les paramètres SQL."""
-        http_ctx, conn, cur = self._setup_mocks(extract_url_impl, SITEMAP_XML_VALID)
+        """L'URL exacte de chaque nouveau produit doit figurer dans les paramètres SQL du batch d'insertion."""
+        mock_executemany_returns = [len(EXPECTED_PRODUCT_URLS)]
+        http_ctx, conn, cur = self._setup_mocks(
+            extract_url_impl,
+            SITEMAP_XML_VALID,
+            initial_db_rows=[],
+            mock_executemany_returns=mock_executemany_returns,
+        )
 
         with (
             patch.dict(os.environ, {"DATABASE_URL": "postgresql://fake"}),
@@ -268,14 +287,20 @@ class TestSyncSitemapToDbPersistence:
         ):
             extract_url_impl["sync_sitemap_to_db"]()
 
-        all_sql_params = [
-            c[0][1]  # 2ème argument positionnel = tuple de params
-            for c in cur.execute.call_args_list
-            if "INSERT" in str(c[0][0]).upper()
-        ]
-        inserted_urls = [p[0] for p in all_sql_params]
-        for expected_url in EXPECTED_PRODUCT_URLS:
-            assert expected_url in inserted_urls
+        # Get the arguments passed to the executemany call for INSERT
+        insert_call_args = None
+        for call_args in cur.executemany.call_args_list:
+            if "INSERT" in str(call_args[0][0]).upper():
+                insert_call_args = call_args
+                break
+
+        assert insert_call_args is not None, "executemany for INSERT was not called"
+
+        # The second argument to executemany is the list of tuples for insertion
+        inserted_products_data = insert_call_args[0][1]
+        inserted_urls = [prod_data[0] for prod_data in inserted_products_data]
+
+        assert set(inserted_urls) == set(EXPECTED_PRODUCT_URLS)
 
     def test_product_name_derived_from_url_passed_to_insert(self, extract_url_impl):
         """Le nom produit inséré doit correspondre au slug de l'URL pour chaque nouveau produit."""
