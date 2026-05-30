@@ -6,8 +6,10 @@ Expose deux routes :
 - POST /trigger-scan  → déclenche le batch de nuit en tâche de fond.
 """
 
+import argparse
 import logging
 import os
+import sys
 
 from dotenv import load_dotenv
 from fastapi import BackgroundTasks, FastAPI, Header, HTTPException

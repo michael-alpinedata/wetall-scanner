@@ -22,19 +22,19 @@ from .orchestrator import smart_scan
 logger = logging.getLogger(__name__)
 
 # Nombre de produits traités par exécution (configurable via env)
-NB_PRODUCT_SCANNED: int = int(os.environ.get("NB_PRODUCT_SCANNED", 1000))
+DEFAULT_NB_PRODUCT_SCANNED: int = int(os.environ.get("NB_PRODUCT_SCANNED", 50))
 
 # Requête SQL : produits les plus anciennement scannés (ou jamais scannés)
 _FETCH_PRODUCTS_SQL = """
     SELECT p.produit_id, p.url_wetall, p.is_active, p.status_history
     FROM dim_produit p
     LEFT JOIN (
-        SELECT produit_id, MAX(date_scan) AS dernier_scan
+        SELECT produit_id, MAX(date_scan) AS last_scan_date
         FROM fact_stock_status
         GROUP BY produit_id
     ) f ON p.produit_id = f.produit_id
     WHERE p.is_active = TRUE
-    ORDER BY f.dernier_scan ASC NULLS FIRST
+    ORDER BY f.last_scan_date ASC NULLS FIRST
     LIMIT %s;
 """
 
@@ -122,13 +122,16 @@ def _update_product_status_history(
     )
 
 
-def run_pipeline() -> None:
+def run_pipeline(limit: int | None = None) -> None:
     """
     Point d'entrée du batch de nuit.
 
     Récupère les N produits les plus anciennement scannés,
     les scanne un à un et persiste les résultats en base.
     """
+    if limit is None:
+        limit = DEFAULT_NB_PRODUCT_SCANNED
+
     db_url = os.environ.get("DATABASE_URL")
     if not db_url:
         logger.error("La variable d'environnement DATABASE_URL est manquante.")
@@ -138,14 +141,15 @@ def run_pipeline() -> None:
         conn = _get_db_connection(db_url)
         cur = conn.cursor()
 
-        products = _fetch_products(cur, NB_PRODUCT_SCANNED)
+        logger.info("Récupération de %d produits (Priorité : jamais scannés ou scans les plus anciens).", limit)
+        products = _fetch_products(cur, limit)
         if not products:
             logger.info("Aucun produit en attente de traitement.")
             cur.close()
             conn.close()
             return
 
-        logger.info("DÉMARRAGE DU BATCH DE NUIT : %d produits ciblés.", len(products))
+        logger.info("DÉMARRAGE DU BATCH DE NUIT : %d produits ciblés effectivement récupérés.", len(products))
 
         total_products_processed = 0
         status_changes_count = 0
