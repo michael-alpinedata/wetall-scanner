@@ -149,11 +149,13 @@ class TestRunPipelineScanExecution:
             mock_client_cls.return_value.__enter__ = MagicMock(return_value=mock_client)
             mock_client_cls.return_value.__exit__ = MagicMock(return_value=False)
 
-            # Test avec une limite explicite
-            pipeline_impl["run_pipeline"](limit=2)
+            # Appel avec une limite explicite
+            pipeline_impl["run_pipeline"](limit=50)
 
-        # On vérifie que la requête SQL a bien reçu la limite passée en paramètre
-        cur.execute.assert_any_call(patch.get_current_pipeline_sql_fetch_placeholder(), (2,))
+        # Vérifie que la limite a été passée à la requête SQL (le premier execute)
+        # On cherche l'appel qui contient "SELECT"
+        select_call = [c for c in cur.execute.call_args_list if "SELECT" in str(c[0][0]).upper()][0]
+        assert select_call[0][1] == (50,)
         assert mock_scan.call_count == len(FAKE_PRODUCTS)
 
     def test_insert_called_for_each_product(self, pipeline_impl):
