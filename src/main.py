@@ -30,7 +30,7 @@ app = FastAPI(
 )
 
 # Clé secrète à définir dans les variables d'environnement de Render
-API_SECRET: str = os.environ.get("SCAN_SECRET_KEY", "change_moi_vite")
+API_SECRET: str = os.environ.get("SCAN_SECRET_KEY")
 
 
 @app.api_route("/", methods=["GET", "HEAD"])
