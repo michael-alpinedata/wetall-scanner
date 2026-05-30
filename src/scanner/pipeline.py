@@ -147,6 +147,10 @@ def run_pipeline() -> None:
 
         logger.info("DÉMARRAGE DU BATCH DE NUIT : %d produits ciblés.", len(products))
 
+        total_products_processed = 0
+        status_changes_count = 0
+        error_count = 0
+
         with httpx.Client(follow_redirects=True, timeout=60.0) as client:
             for i, row in enumerate(products, start=1):
                 produit_id = row["produit_id"]
@@ -155,6 +159,17 @@ def run_pipeline() -> None:
                 status_history_in_db = row["status_history"]
 
                 status, code, final_url, debug_msg = smart_scan(client, url_wetall)
+                total_products_processed += 1
+
+                # If smart_scan returns an error status
+                if status != "OK":
+                    error_count += 1
+                    logger.warning(
+                        "Produit ID %d (URL: %s) : Smart scan a renvoyé un statut d'erreur : '%s'",
+                        produit_id,
+                        url_wetall[:50],
+                        status,
+                    )
 
                 # CDC Logic for dim_produit
                 now_utc = datetime.now(timezone.utc).isoformat(timespec="seconds") + "Z"
@@ -203,6 +218,7 @@ def run_pipeline() -> None:
                         new_deactivated_at_for_dim_produit,
                         new_status_entry_jsonb,
                     )
+                    status_changes_count += 1
                 else:
                     logger.debug(
                         (
@@ -230,7 +246,13 @@ def run_pipeline() -> None:
 
         cur.close()
         conn.close()
+        logger.info(
+            "RÉSUMÉ BATCH DE NUIT : %d produits traités, %d changements de statut (UPDATE dim_produit), %d erreurs de scan.",
+            total_products_processed,
+            status_changes_count,
+            error_count,
+        )
         logger.info("FIN DU BATCH DE NUIT. Données disponibles pour le Dashboard.")
 
     except Exception as exc:
-        logger.error("Échec critique du pipeline : %s", exc)
+        logger.error("Échec critique du pipeline : %s", exc, exc_info=True)
