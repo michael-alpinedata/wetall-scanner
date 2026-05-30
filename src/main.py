@@ -56,3 +56,19 @@ async def trigger_scan(
     background_tasks.add_task(run_pipeline)
     logger.info("Batch de nuit déclenché via /trigger-scan.")
     return {"message": "Scan lancé en arrière-plan"}
+
+
+if __name__ == "__main__":
+    # Si des arguments sont passés (ex: --limit), on exécute le pipeline en CLI
+    if len(sys.argv) > 1:
+        parser = argparse.ArgumentParser(description="Wetall Scanner CLI")
+        parser.add_argument("--limit", type=int, help="Nombre maximum de produits à scanner")
+        args = parser.parse_args()
+
+        logger.info("Exécution du pipeline via CLI (limit=%s)", args.limit)
+        run_pipeline(limit=args.limit)
+    else:
+        # Sinon, on lance le serveur API
+        import uvicorn
+
+        uvicorn.run(app, host="0.0.0.0", port=8000)
