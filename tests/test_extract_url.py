@@ -227,8 +227,15 @@ class TestSyncSitemapToDbPersistence:
 
         return mock_http_ctx, conn, cur
 
-    def test_upsert_called_for_each_product_url(self, extract_url_impl):
-        http_ctx, conn, cur = self._setup_mocks(extract_url_impl, SITEMAP_XML_VALID)
+    def test_upsert_called_for_new_product_urls(self, extract_url_impl):
+        # Expect 1 executemany call for inserts, with N rows affected (N = num new products)
+        mock_executemany_returns = [len(EXPECTED_PRODUCT_URLS)]
+        http_ctx, conn, cur = self._setup_mocks(
+            extract_url_impl,
+            SITEMAP_XML_VALID,
+            initial_db_rows=[],  # No existing products
+            mock_executemany_returns=mock_executemany_returns,
+        )
 
         with (
             patch.dict(os.environ, {"DATABASE_URL": "postgresql://fake"}),
@@ -237,10 +244,18 @@ class TestSyncSitemapToDbPersistence:
         ):
             extract_url_impl["sync_sitemap_to_db"]()
 
+        # Check that executemany was called exactly once for INSERT
         insert_calls = [
-            c for c in cur.execute.call_args_list if "INSERT" in str(c[0][0]).upper()
+            c for c in cur.executemany.call_args_list if "INSERT" in str(c[0][0]).upper()
         ]
-        assert len(insert_calls) == len(EXPECTED_PRODUCT_URLS)
+        assert len(insert_calls) == 1 # Expecting one batch insert call
+
+        # The second argument to executemany is the list of tuples for insertion
+        # Each tuple is (url_wetall, nom_produit, is_active, status_history_jsonb)
+        inserted_products_data = insert_calls[0][0][1] # Get the data from the first executemany call arguments
+        inserted_urls = [prod_data[0] for prod_data in inserted_products_data]
+
+        assert set(inserted_urls) == set(EXPECTED_PRODUCT_URLS)
 
     def test_product_url_passed_to_insert(self, extract_url_impl):
         """L'URL exacte du produit doit figurer dans les paramètres SQL."""
@@ -263,8 +278,14 @@ class TestSyncSitemapToDbPersistence:
             assert expected_url in inserted_urls
 
     def test_product_name_derived_from_url_passed_to_insert(self, extract_url_impl):
-        """Le nom produit inséré doit correspondre au slug de l'URL."""
-        http_ctx, conn, cur = self._setup_mocks(extract_url_impl, SITEMAP_XML_VALID)
+        """Le nom produit inséré doit correspondre au slug de l'URL pour chaque nouveau produit."""
+        mock_executemany_returns = [len(EXPECTED_PRODUCT_URLS)]
+        http_ctx, conn, cur = self._setup_mocks(
+            extract_url_impl,
+            SITEMAP_XML_VALID,
+            initial_db_rows=[],
+            mock_executemany_returns=mock_executemany_returns,
+        )
 
         with (
             patch.dict(os.environ, {"DATABASE_URL": "postgresql://fake"}),
@@ -273,13 +294,21 @@ class TestSyncSitemapToDbPersistence:
         ):
             extract_url_impl["sync_sitemap_to_db"]()
 
-        all_sql_params = [
-            c[0][1]
-            for c in cur.execute.call_args_list
-            if "INSERT" in str(c[0][0]).upper()
+        insert_call_args = None
+        for call_args in cur.executemany.call_args_list:
+            if "INSERT" in str(call_args[0][0]).upper():
+                insert_call_args = call_args
+                break
+
+        assert insert_call_args is not None, "executemany for INSERT was not called"
+
+        inserted_products_data = insert_call_args[0][1]
+        inserted_names = [prod_data[1] for prod_data in inserted_products_data]
+
+        expected_names = [
+            extract_url_impl["url_to_name"](url) for url in EXPECTED_PRODUCT_URLS
         ]
-        inserted_names = [p[1] for p in all_sql_params]
-        assert "Chaussures Trail X3" in inserted_names
+        assert set(inserted_names) == set(expected_names)
         assert "Velo Route Carbone" in inserted_names
 
     def test_non_product_urls_not_inserted(self, extract_url_impl):
