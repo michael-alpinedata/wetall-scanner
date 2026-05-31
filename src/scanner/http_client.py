@@ -75,28 +75,34 @@ def resolve_affiliation_link(url: str) -> str:
 
 def fetch_with_fallback(client: httpx.Client, url: str, headers: dict[str, str]) -> httpx.Response:
     """
-    Exécute la requête de scraping avec usurpation de signature TLS via curl_cffi 
-    si la cible fait partie des marchands protégés par Cloudflare/Akamai.
+    Exécute la requête de scraping. Utilise directement curl_cffi pour les cibles sensibles
+    afin de protéger l'IP, sinon utilise httpx avec un fallback curl_cffi en cas d'erreur.
     """
-    # Si c'est une cible réputée difficile, on utilise directement curl_cffi pour éviter le marquage IP
     if _is_hard_target(url):
-        logger.info("Cible sensible détectée (%s). Utilisation directe de curl_cffi.", url[:40])
-        try:
-            from curl_cffi import requests as curl_requests
-            resp_curl = curl_requests.get(url, headers=headers, impersonate="chrome", timeout=30)
-            
-            # Reconstruction d'un objet httpx.Response factice pour maintenir la compatibilité de l'orchestrateur
-            mock_resp = httpx.Response(
-                status_code=resp_curl.status_code,
-                content=resp_curl.content,
-                headers=httpx.Headers(dict(resp_curl.headers)),
-                request=httpx.Request("GET", url)
-            )
-            return mock_resp
-        except Exception as exc:
-            logger.error("Échec curl_cffi direct sur hard target : %s. Tentative httpx standard.", exc)
+        logger.info(f"Cible sensible détectée ({url[:40]}). Utilisation directe de curl_cffi.")
+        return _fetch_with_curl(url, headers)
 
-    # Fallback standard pour le reste du catalogue
     resp = client.get(url, headers=headers)
+    if resp.status_code in (401, 403):
+        logger.warning(f"Blocage {resp.status_code} sur {url[:40]}. Tentative de fallback curl_cffi.")
+        return _fetch_with_curl(url, headers, fallback_resp=resp)
     return resp
+
+
+def _fetch_with_curl(url: str, headers: dict, fallback_resp: httpx.Response | None = None) -> httpx.Response:
+    """Encapsulation de l'appel curl_cffi avec reconstruction d'objet httpx.Response."""
+    try:
+        from curl_cffi import requests as curl_requests
+        r = curl_requests.get(url, headers=headers, impersonate="chrome", timeout=30)
+        return httpx.Response(
+            status_code=r.status_code,
+            content=r.content,
+            headers=httpx.Headers(dict(r.headers)),
+            request=httpx.Request("GET", url)
+        )
+    except Exception as e:
+        logger.error(f"Échec curl_cffi sur {url[:40]} : {e}")
+        if fallback_resp:
+            return fallback_resp
+        raise
     

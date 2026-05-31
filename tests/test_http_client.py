@@ -47,14 +47,15 @@ class TestFetchWithFallback:
         assert resp.status_code == 200
         client.get.assert_called_once_with(GENERIC_URL, headers=HEADERS)
 
-    def test_200_decathlon_no_curl_called(self, http_client_impl):
-        """Même un hard-target en 200 ne déclenche pas curl_cffi."""
+    def test_decathlon_triggers_curl_immediately(self, http_client_impl):
+        """Decathlon est un hard-target : on utilise curl_cffi d'entrée de jeu."""
         client = _make_client_returning(200, url=DECATHLON_URL)
         fn = http_client_impl["fetch_with_fallback"]
 
         with patch(http_client_impl["curl_get_path"]) as mock_curl:
+            mock_curl.return_value = MagicMock(status_code=200)
             fn(client, DECATHLON_URL, HEADERS)
-            mock_curl.assert_not_called()
+            mock_curl.assert_called_once()
 
     def test_403_generic_url_no_curl(self, http_client_impl):
         """URL générique en 403 → pas un hard-target → curl non déclenché."""
