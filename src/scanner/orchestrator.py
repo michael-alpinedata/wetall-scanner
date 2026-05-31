@@ -24,83 +24,52 @@ ScanOutput = tuple[str, int, str | None, str]
 
 
 def _execute_auto_healing(merchant_name: str, url: str, debug_info: str) -> str:
-    """
-    Appelle l'API LLM (Gemini/Groq) pour analyser le blocage de scraping 
-    et formuler une proposition de modification de code.
-    """
-    api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GROQ_API_KEY")
+    """Appelle l'API Gemini pour analyser le blocage et proposer un correctif ou un rapport."""
+    api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
-        return "# Clé API LLM manquante pour la génération du correctif."
+        return "# Clé API GEMINI_API_KEY manquante."
 
     prompt = f"""
-    En tant que Senior Data Engineer expert en Python et Web Scraping, analyse ce blocage survenu sur le site : {merchant_name}.
-    URL cible : {url}
-    Logs d'erreur : {debug_info}
+    En tant que Senior Data Engineer, analyse ce blocage sur le site : {merchant_name}.
+    URL cible : {url} | Logs : {debug_info}
     
-    Génère uniquement une fonction d'analyse python privée à injecter à la fin de 'analyzer.py' nommée `_check_{merchant_name.lower()}(url: str, html: str) -> ScanResult | None:`.
-    Ajoute également le marqueur de chaînes de caractères de rupture au début du fichier.
-    Rends uniquement le code brut à ajouter, sans commentaires markdown additionnels.
+    1. Si possible, génère uniquement une fonction python `_check_{merchant_name.lower()}(url: str, html: str) -> ScanResult | None:` pour 'analyzer.py'.
+    2. Sinon, génère un 'Rapport de Blocage Spécifique' avec suggestions (proxies, headless, etc.).
+    Utilise impérativement des triples guillemets pour les blocs de texte.
+    Rends le code ou le rapport brut.
     """
+    url_api = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
     try:
-        headers = {"Content-Type": "application/json"}
-        payload = {"contents": [{"parts": [{"text": prompt}]}]}
-        url_api = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
-        
         with httpx.Client() as client:
-            r = client.post(f"{url_api}?key={api_key}", json=payload, timeout=20)
-            if r.status_code == 200:
-                return r.json()["candidates"][0]["content"]["parts"][0]["text"].strip("`python\n").strip()
+            r = client.post(f"{url_api}?key={api_key}", json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=25)
+            r.raise_for_status()
+            return r.json()["candidates"][0]["content"]["parts"][0]["text"].strip("`python\n").strip()
     except Exception as e:
-        logger.error("Échec génération correctif LLM : %s", e)
-    return f"# Échec de la génération automatique du code de résolution."
+        logger.error(f"Échec LLM : {e}")
+        return f"# Erreur lors de la génération du diagnostic IA pour {merchant_name}."
 
 
-def _deploy_pull_request_healing(merchant_name: str, code_proposal: str):
-    """Crée une branche et soumet une Pull Request directement sur le dépôt GitHub."""
-    gh_token = os.environ.get("GH_TOKEN")
-    repo_slug = os.environ.get("GITHUB_REPOSITORY")
-    
-    if not gh_token or not repo_slug:
-        logger.warning("Variables d'environnement GITHUB manquantes. Annulation de la PR.")
-        return None
-
+def _deploy_pull_request_healing(merchant_name: str, code_proposal: str) -> str | None:
+    """Crée une branche et soumet une Pull Request via PyGithub."""
+    token, repo_slug = os.environ.get("GH_TOKEN"), os.environ.get("GITHUB_REPOSITORY")
+    if not (token and repo_slug): return None
     try:
-        gh = Github(gh_token)
-        repo = gh.get_repo(repo_slug)
-        main_ref = repo.get_git_ref("heads/main")
+        repo = Github(token).get_repo(repo_slug)
+        ts = int(time.time())
+        branch = f"feature/auto-fix-{merchant_name.lower().replace(' ', '-')}-{ts}"
+        repo.create_git_ref(ref=f"refs/heads/{branch}", sha=repo.get_git_ref("heads/main").object.sha)
         
-        feature_branch = f"feature/auto-fix-{merchant_name.lower().replace(' ', '-')}"
-        repo.create_git_ref(ref=f"refs/heads/{feature_branch}", sha=main_ref.object.sha)
+        path = "src/scanner/analyzer.py"
+        file_content = repo.get_contents(path, ref=branch)
+        new_content = file_content.decoded_content.decode("utf-8") + f"\n\n# Auto-Healing {merchant_name}\n{code_proposal}"
         
-        file_path = "src/scanner/analyzer.py"
-        contents = repo.get_contents(file_path, ref=feature_branch)
-        current_code = contents.decoded_content.decode("utf-8")
-        
-        updated_code = current_code + f"\n\n# --- RÈGLE AUTO-HEALING POUR {merchant_name.upper()} ---\n" + code_proposal
-        
-        repo.update_file(
-            path=file_path,
-            message=f"fix(engine): ajout de la règle d'analyse pour {merchant_name}",
-            content=updated_code,
-            sha=contents.sha,
-            branch=feature_branch
-        )
-        
-        pr = repo.create_pull(
-            title=f"🤖 [Auto-Healing] Support correctif pour {merchant_name}",
-            body=f"""Une anomalie récurrente ou un blocage a été détecté sur **{merchant_name}**.
-
-### Proposition de code :
-```python
-{code_proposal}
-```""",
-            head=feature_branch,
-            base="main"
-        )
+        repo.update_file(path, f"fix: auto-healing {merchant_name}", new_content, file_content.sha, branch=branch)
+        pr_body = f"""### 🤖 Auto-Healing Report for {merchant_name}\n\n```python\n{code_proposal}\n```"""
+        pr = repo.create_pull(title=f"🤖 [Auto-Healing] {merchant_name}", body=pr_body, head=branch, base="main")
+        logger.info(f"PR créée : {pr.html_url}")
         return pr.html_url
     except Exception as e:
-        logger.error("Impossible de pousser la Pull Request : %s", e)
-        return None
+        logger.error(f"Erreur Git : {e}"); return None
 
 
 def _send_email_report(merchant_name: str, url: str, debug_msg: str, pr_url: str | None):
@@ -136,26 +105,23 @@ Action corrective IA : {"Pull Request ouverte avec succès : " + pr_url if pr_ur
 def _scan_merchant(client: httpx.Client, buy_link: str, headers: dict) -> ScanOutput:
     """Scanne le marchand final en gérant l'auto-healing en cas de blocage."""
     buy_link = resolve_affiliation_link(buy_link)
+    if not buy_link or "://" not in buy_link:
+        raise ValueError("Lien Marchand Invalide")
     buy_link = normalize_amazon_url(buy_link)
-    
-    merchant_name = buy_link.split("//")[-1].split("/")[0].replace("www.", "")
+    merchant = buy_link.split("//")[-1].split("/")[0].replace("www.", "")
 
-    logger.info("Scan marchand : %s...", buy_link[:40])
-    time.sleep(random.uniform(5, 10))
+    logger.info(f"Scan marchand : {merchant} | URL: {buy_link[:40]}")
+    time.sleep(random.uniform(3, 7))
+    resp = fetch_with_fallback(client, buy_link, headers)
 
-    resp_m = fetch_with_fallback(client, buy_link, headers)
-
-    if resp_m.status_code in (401, 403, 503):
-        debug_info = f"Code HTTP {resp_m.status_code} - Blocage détecté."
+    if resp.status_code in (401, 403, 503):
+        logger.warning(f"Blocage {resp.status_code} détecté sur {merchant}. Auto-healing...")
+        fix = _execute_auto_healing(merchant, buy_link, f"HTTP {resp.status_code}")
+        pr = _deploy_pull_request_healing(merchant, fix)
+        _send_email_report(merchant, buy_link, f"HTTP {resp.status_code}", pr)
+        return "Vérification bloquée", resp.status_code, str(resp.url), f"Auto-healing triggered. PR: {pr}"
         
-        logger.warning("Lancement de la remédiation IA pour %s", merchant_name)
-        code_fix = _execute_auto_healing(merchant_name, buy_link, debug_info)
-        pr_link = _deploy_pull_request_healing(merchant_name, code_fix)
-        _send_email_report(merchant_name, buy_link, debug_info, pr_link)
-
-        return "Vérification bloquée (403)", resp_m.status_code, str(resp_m.url), f"Pare-feu marchand. PR: {pr_link}"
-        
-    if resp_m.status_code == 404:
+    if resp.status_code == 404:
         return "Lien Brisé (404)", 404, str(resp_m.url), "Erreur 404 serveur"
 
     status, msg = analyze_merchant_status(str(resp_m.url), resp_m.text)
