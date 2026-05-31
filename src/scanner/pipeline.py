@@ -122,6 +122,9 @@ def run_pipeline(limit: int | None = None) -> None:
             conn.close()
             return
 
+        nb_status_changes = 0
+        nb_errors = 0
+
         with httpx.Client(follow_redirects=True, timeout=60.0) as client:
             for i, row in enumerate(products, start=1):
                 produit_id = row["produit_id"]
@@ -129,7 +132,14 @@ def run_pipeline(limit: int | None = None) -> None:
                 current_is_active_in_db = row["is_active"]
                 status_history_in_db = row["status_history"]
 
+                if i % _LOG_PROGRESS_EVERY == 0:
+                    logger.info("Progression : %s/%s fiches traitées.", i, len(products))
+
                 status, code, final_url, debug_msg = smart_scan(client, url_wetall)
+
+                if status in ("Erreur technique", "Fail Wetall") or "Erreur" in status:
+                    nb_errors += 1
+                    logger.warning("Smart scan a renvoyé un statut d'erreur : '%s'", status)
 
                 # CDC Logic
                 now_utc = datetime.now(timezone.utc)
@@ -150,6 +160,7 @@ def run_pipeline(limit: int | None = None) -> None:
                 if (status != last_known_status_from_history) or (
                     new_is_active_for_dim_produit != current_is_active_in_db
                 ):
+                    nb_status_changes += 1
                     _update_product_status_history(
                         cur,
                         produit_id,
@@ -163,6 +174,12 @@ def run_pipeline(limit: int | None = None) -> None:
 
         cur.close()
         conn.close()
+        logger.info(
+            "RÉSUMÉ BATCH DE NUIT : %s produits traités, %s changements de statut, %s erreurs de scan.",
+            len(products),
+            nb_status_changes,
+            nb_errors,
+        )
         logger.info("Batch terminé avec succès.")
 
     except Exception as exc:
