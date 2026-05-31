@@ -119,7 +119,7 @@ def _scan_merchant(client: httpx.Client, buy_link: str, headers: dict) -> ScanOu
         fix = _execute_auto_healing(merchant, buy_link, f"HTTP {resp.status_code}")
         pr = _deploy_pull_request_healing(merchant, fix)
         _send_email_report(merchant, buy_link, f"HTTP {resp.status_code}", pr)
-        return "Vérification bloquée", resp.status_code, str(resp.url), f"Auto-healing triggered. PR: {pr}"
+        return "Vérification bloquée (403)", resp.status_code, str(resp.url), f"Auto-healing triggered. PR: {pr}"
         
     if resp.status_code == 404:
         return "Lien Brisé (404)", 404, str(resp.url), "Erreur 404 serveur"
