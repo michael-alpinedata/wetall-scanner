@@ -122,10 +122,10 @@ def _scan_merchant(client: httpx.Client, buy_link: str, headers: dict) -> ScanOu
         return "Vérification bloquée", resp.status_code, str(resp.url), f"Auto-healing triggered. PR: {pr}"
         
     if resp.status_code == 404:
-        return "Lien Brisé (404)", 404, str(resp_m.url), "Erreur 404 serveur"
+        return "Lien Brisé (404)", 404, str(resp.url), "Erreur 404 serveur"
 
-    status, msg = analyze_merchant_status(str(resp_m.url), resp_m.text)
-    return status, resp_m.status_code, str(resp_m.url), msg
+    status, msg = analyze_merchant_status(str(resp.url), resp.text)
+    return status, resp.status_code, str(resp.url), msg
 
 
 def smart_scan(client: httpx.Client, url_wetall: str) -> ScanOutput:
