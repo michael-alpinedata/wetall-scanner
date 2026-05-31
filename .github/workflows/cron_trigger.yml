@@ -3,7 +3,7 @@ name: Cron Trigger Scan
 on:
   schedule:
     # 0,30 21-23,0-4 UTC correspond à 23h-06h Paris (UTC+2)
-    - cron: '0,30 21-23,0-4 * * *'
+    - cron: '0,15,30,45 21-23,0-4 * * *'
   workflow_dispatch:
 
 jobs:
