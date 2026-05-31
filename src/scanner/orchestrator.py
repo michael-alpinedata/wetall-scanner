@@ -106,8 +106,10 @@ def _scan_merchant(client: httpx.Client, buy_link: str, headers: dict) -> ScanOu
     """Scanne le marchand final en gérant l'auto-healing en cas de blocage."""
     buy_link = resolve_affiliation_link(buy_link)
     if not buy_link or "://" not in buy_link:
-        raise ValueError("Lien Marchand Invalide")
-    buy_link = normalize_amazon_url(buy_link)
+        if buy_link and (buy_link.startswith("/dp/") or buy_link.startswith("dp/")):
+            buy_link = normalize_amazon_url(buy_link)
+        else:
+            raise ValueError("Lien Marchand Invalide")
     merchant = buy_link.split("//")[-1].split("/")[0].replace("www.", "")
 
     logger.info(f"Scan marchand : {merchant} | URL: {buy_link[:40]}")
@@ -119,7 +121,7 @@ def _scan_merchant(client: httpx.Client, buy_link: str, headers: dict) -> ScanOu
         fix = _execute_auto_healing(merchant, buy_link, f"HTTP {resp.status_code}")
         pr = _deploy_pull_request_healing(merchant, fix)
         _send_email_report(merchant, buy_link, f"HTTP {resp.status_code}", pr)
-        return "Vérification bloquée (403)", resp.status_code, str(resp.url), f"Auto-healing triggered. PR: {pr}"
+        return "Vérification bloquée (403)", resp.status_code, str(resp.url), "Pare-feu marchand"
         
     if resp.status_code == 404:
         return "Lien Brisé (404)", 404, str(resp.url), "Erreur 404 serveur"
