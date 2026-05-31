@@ -26,6 +26,11 @@ Couverture visée :
     ✓ URL + stock OK                           → OK
     ✓ "amazon" dans HTML (pas URL)             → détecté
 
+  Alltricks
+    ✓ URL + "épuisé"        → Rupture
+    ✓ URL + "plus en stock" → Rupture
+    ✓ URL + "indisponible"  → Rupture
+
   Cas généraux
     ✓ Marchand inconnu / URL vide              → ("OK", "Scan réussi")
     ✓ HTML vide + URL vide                     → ("OK", "Scan réussi")
@@ -54,6 +59,7 @@ from tests.conftest import (
 NIKE_URL = "https://www.nike.com/fr/t/chaussure-react/AB1234"
 DECATHLON_URL = "https://www.decathlon.fr/p/veste-trail/_/R-p-305611"
 AMAZON_URL = "https://www.amazon.fr/dp/B08XYZ123/ref=ppx_yo_dt_b_search"
+ALLTRICKS_URL = "https://www.alltricks.fr/produit/velo-route-1234"
 GENERIC_URL = "https://www.unknown-shop.com/product/123"
 
 
@@ -185,6 +191,28 @@ class TestAnalyzeMerchantStatusAmazon:
         html = "<p>n'est pas une page fonctionnelle. actuellement indisponible.</p>"
         status, msg = analyzer_impl(AMAZON_URL, html)
         assert status == "Lien Mort (404 déguisé)"
+
+
+# ============================================================================
+# Alltricks
+# ============================================================================
+
+
+class TestAnalyzeMerchantStatusAlltricks:
+    def test_alltricks_epuise_is_rupture(self, analyzer_impl):
+        status, msg = analyzer_impl(ALLTRICKS_URL, "<html>Produit épuisé</html>")
+        assert status == "Rupture de stock"
+        assert "Alltricks" in msg
+
+    def test_alltricks_plus_en_stock_is_rupture(self, analyzer_impl):
+        status, msg = analyzer_impl(ALLTRICKS_URL, "<html>Plus en stock actuellement.</html>")
+        assert status == "Rupture de stock"
+        assert "Alltricks" in msg
+
+    def test_alltricks_indisponible_is_rupture(self, analyzer_impl):
+        status, msg = analyzer_impl(ALLTRICKS_URL, "<html>Indisponible pour le moment.</html>")
+        assert status == "Rupture de stock"
+        assert "Alltricks" in msg
 
 
 # ============================================================================

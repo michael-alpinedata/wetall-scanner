@@ -35,7 +35,7 @@ USER_AGENTS: list[str] = [
 ]
 
 # Marchands connus pour bloquer les scrapers — éligibles au fallback curl_cffi
-_HARD_TARGETS: tuple[str, ...] = ("decathlon", "alltricks")
+_HARD_TARGETS: tuple[str, ...] = ("decathlon", "alltricks", "nike")
 
 
 def build_headers() -> dict[str, str]:

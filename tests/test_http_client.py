@@ -75,15 +75,18 @@ class TestFetchWithFallback:
             mock_curl.assert_not_called()
         assert resp.status_code == 401
 
-    def test_403_nike_url_no_curl(self, http_client_impl):
-        """Nike n'est pas dans la liste des hard-targets → pas de curl."""
+    def test_403_nike_triggers_curl(self, http_client_impl):
+        """Nike est désormais un hard-target → déclenche curl_cffi."""
         client = _make_client_returning(403, url=NIKE_URL)
         fn = http_client_impl["fetch_with_fallback"]
 
-        with patch(http_client_impl["curl_get_path"]) as mock_curl:
+        mock_curl_resp = MagicMock()
+        mock_curl_resp.status_code = 200
+
+        with patch(http_client_impl["curl_get_path"], return_value=mock_curl_resp):
             resp = fn(client, NIKE_URL, HEADERS)
-            mock_curl.assert_not_called()
-        assert resp.status_code == 403
+
+        assert resp.status_code == 200
 
     # ── Cas fallback curl_cffi déclenché ─────────────────────────────────────
 

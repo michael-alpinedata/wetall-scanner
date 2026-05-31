@@ -16,6 +16,7 @@ _NIKE_OUT_OF_STOCK_MARKERS = ("plus disponible", "indisponible", "rupture")
 _DECATHLON_OUT_OF_STOCK_MARKERS = ("indisponible", "rupture", "en rupture")
 _AMAZON_DEAD_LINK_MARKERS = ("n'est pas une page fonctionnelle",)
 _AMAZON_OUT_OF_STOCK_MARKERS = ("actuellement indisponible", "nouveau approvisionné")
+_ALLTRICKS_OUT_OF_STOCK_MARKERS = ("épuisé", "plus en stock", "indisponible")
 
 
 def _check_nike(url: str, html: str) -> ScanResult | None:
@@ -47,8 +48,17 @@ def _check_amazon(url: str, html: str) -> ScanResult | None:
     return None
 
 
+def _check_alltricks(url: str, html: str) -> ScanResult | None:
+    """Règles de détection Alltricks."""
+    if "alltricks" not in url and "alltricks" not in html:
+        return None
+    if any(marker in html for marker in _ALLTRICKS_OUT_OF_STOCK_MARKERS):
+        return "Rupture de stock", "Alltricks : Rupture détectée"
+    return None
+
+
 # Pipeline de règles : ordre d'évaluation explicite et extensible
-_MERCHANT_RULES = [_check_nike, _check_decathlon, _check_amazon]
+_MERCHANT_RULES = [_check_nike, _check_decathlon, _check_amazon, _check_alltricks]
 
 _DEFAULT_RESULT: ScanResult = ("OK", "Scan réussi")
 
