@@ -57,24 +57,27 @@ class TestFetchWithFallback:
             fn(client, DECATHLON_URL, HEADERS)
             mock_curl.assert_called_once()
 
-    def test_403_generic_url_no_curl(self, http_client_impl):
-        """URL générique en 403 → pas un hard-target → curl non déclenché."""
+    def test_403_generic_url_triggers_fallback(self, http_client_impl):
+        """URL générique en 403 → déclenche désormais le fallback curl_cffi."""
         client = _make_client_returning(403)
         fn = http_client_impl["fetch_with_fallback"]
 
         with patch(http_client_impl["curl_get_path"]) as mock_curl:
+            mock_curl.return_value = MagicMock(status_code=200)
             resp = fn(client, GENERIC_URL, HEADERS)
-            mock_curl.assert_not_called()
-        assert resp.status_code == 403
+            mock_curl.assert_called_once()
+        assert resp.status_code == 200
 
-    def test_401_generic_url_no_curl(self, http_client_impl):
+    def test_401_generic_url_triggers_fallback(self, http_client_impl):
+        """URL générique en 401 → déclenche désormais le fallback curl_cffi."""
         client = _make_client_returning(401)
         fn = http_client_impl["fetch_with_fallback"]
 
         with patch(http_client_impl["curl_get_path"]) as mock_curl:
+            mock_curl.return_value = MagicMock(status_code=200)
             resp = fn(client, GENERIC_URL, HEADERS)
-            mock_curl.assert_not_called()
-        assert resp.status_code == 401
+            mock_curl.assert_called_once()
+        assert resp.status_code == 200
 
     def test_403_nike_triggers_curl(self, http_client_impl):
         """Nike est désormais un hard-target → déclenche curl_cffi."""
