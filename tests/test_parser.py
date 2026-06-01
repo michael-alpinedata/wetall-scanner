@@ -10,6 +10,7 @@ Couverture visée :
     ✓ Fallback B   : bouton + form sans attribut action      → /out/
     ✓ Fallback B   : pas de bouton, /out/ présent            → premier /out/
     ✓ Fallback B   : plusieurs /out/ → premier retourné
+    ✓ Fallback C   : lien direct marchand (Amazon/Decathlon) → lien direct
     ✓ Aucun lien   : (None, None)
     ✓ HTML vide    : (None, None)
     ✓ Labels retournés corrects par stratégie
@@ -93,6 +94,20 @@ class TestGetBuyLinkFromWetall:
         assert "/out/" in url
         assert label == "Lien via fallback /out/"
 
+    # ── Fallback C : Lien direct marchand ──────────────────────────────────
+
+    def test_direct_merchant_link_detected_as_fallback(self, parser_impl):
+        """Si pas de bouton ni /out/, on détecte un lien direct vers un marchand."""
+        html = """
+        <html><body>
+          <a href="https://www.amazon.fr/dp/B0123456">Acheter sur Amazon</a>
+        </body></html>
+        """
+        soup = make_soup(html)
+        url, label = parser_impl["get_buy_link"](soup)
+        assert url == "https://www.amazon.fr/dp/B0123456"
+        assert label == "Lien via détection domaine marchand"
+
     # ── Aucun lien disponible ─────────────────────────────────────────────
 
     def test_no_buy_link_returns_none_tuple(self, parser_impl):
@@ -108,7 +123,7 @@ class TestGetBuyLinkFromWetall:
         assert label is None
 
     def test_only_non_out_links_returns_none(self, parser_impl):
-        """Des liens présents, mais aucun ne contient /out/ → (None, None)."""
+        """Des liens présents, mais aucun ne contient /out/ ou domaine marchand → (None, None)."""
         html = """
         <html><body>
           <a href="https://www.wetall.fr/produit/shoes/">Voir produit</a>
