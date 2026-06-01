@@ -18,8 +18,8 @@ USER_AGENTS: list[str] = [
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
 ]
 
-# Marchands éligibles au traitement d'usurpation TLS Chrome
-_HARD_TARGETS: tuple[str, ...] = ("decathlon", "alltricks", "nike", "asos")
+# Marchands éligibles au traitement d'usurpation TLS Chrome préventif
+HARD_TARGETS: set[str] = {"decathlon.fr", "alltricks.fr", "nike.com", "asos.com"}
 
 
 def build_headers() -> dict[str, str]:
@@ -40,8 +40,9 @@ def build_headers() -> dict[str, str]:
 
 
 def _is_hard_target(url: str) -> bool:
+    """Vérifie si l'URL appartient à un domaine nécessitant curl_cffi en priorité."""
     url_lower = url.lower()
-    return any(target in url_lower for target in _HARD_TARGETS)
+    return any(target in url_lower for target in HARD_TARGETS)
 
 
 def resolve_affiliation_link(url: str) -> str:

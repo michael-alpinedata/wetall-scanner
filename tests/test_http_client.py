@@ -48,14 +48,17 @@ class TestFetchWithFallback:
         client.get.assert_called_once_with(GENERIC_URL, headers=HEADERS)
 
     def test_decathlon_triggers_curl_immediately(self, http_client_impl):
-        """Decathlon est un hard-target : on utilise curl_cffi d'entrée de jeu."""
+        """Decathlon est un hard-target : on utilise curl_cffi d'entrée de jeu (préventif)."""
         client = _make_client_returning(200, url=DECATHLON_URL)
         fn = http_client_impl["fetch_with_fallback"]
 
         with patch(http_client_impl["curl_get_path"]) as mock_curl:
+            # Simule un objet httpx.Response car fetch_with_fallback attend ça
             mock_curl.return_value = MagicMock(status_code=200)
             fn(client, DECATHLON_URL, HEADERS)
             mock_curl.assert_called_once()
+            # httpx ne doit PAS être appelé pour les hard targets
+            client.get.assert_not_called()
 
     def test_403_generic_url_triggers_fallback(self, http_client_impl):
         """URL générique en 403 → déclenche désormais le fallback curl_cffi."""
