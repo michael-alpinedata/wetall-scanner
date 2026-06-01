@@ -106,4 +106,3 @@ def _fetch_with_curl(url: str, headers: dict, fallback_resp: httpx.Response | No
         if fallback_resp:
             return fallback_resp
         raise
-    
