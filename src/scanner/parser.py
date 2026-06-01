@@ -15,6 +15,7 @@ def get_buy_link_from_wetall(soup: BeautifulSoup) -> tuple[str | None, str | Non
     Stratégies appliquées dans l'ordre de priorité :
     A — Bouton "Ajouter au panier" → action du formulaire parent.
     B — Fallback : premier lien contenant '/out/' dans l'attribut href.
+    C — Fallback : lien direct vers un domaine marchand connu (amazon, decathlon, etc).
 
     Returns:
         (url, message_debug) ou (None, None) si aucun lien trouvé.
@@ -32,6 +33,12 @@ def get_buy_link_from_wetall(soup: BeautifulSoup) -> tuple[str | None, str | Non
     ]
     if out_links:
         return out_links[0], "Lien via fallback /out/"
+
+    # --- Stratégie C : liens marchands directs ---
+    merchant_domains = ["amazon.fr", "decathlon.fr", "alltricks.fr", "nike.com", "asos.com"]
+    for a in soup.find_all("a", href=True):
+        if any(domain in a["href"] for domain in merchant_domains):
+            return a["href"], "Lien via détection domaine marchand"
 
     return None, None
 
