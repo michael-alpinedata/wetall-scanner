@@ -19,7 +19,10 @@ USER_AGENTS: list[str] = [
 ]
 
 # Marchands éligibles au traitement d'usurpation TLS Chrome préventif
-HARD_TARGETS: set[str] = {"decathlon.fr", "alltricks.fr", "nike.com", "asos.com"}
+HARD_TARGETS: set[str] = {
+    "decathlon.fr", "alltricks.fr", "nike.com", "asos.com", 
+    "onelink.me", "linksynergy.com" # On ajoute les redirecteurs ici
+}
 
 
 def build_headers() -> dict[str, str]:
