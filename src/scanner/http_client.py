@@ -81,7 +81,11 @@ def fetch_with_fallback(client: httpx.Client, url: str, headers: dict[str, str])
     """
     if _is_hard_target(url):
         logger.info(f"Cible sensible détectée ({url[:40]}). Utilisation directe de curl_cffi.")
-        return _fetch_with_curl(url, headers)
+        try:
+            return _fetch_with_curl(url, headers)
+        except Exception as e:
+            logger.warning(f"Échec curl_cffi sur cible sensible {url[:40]}. Fallback vers httpx. Erreur: {e}")
+            return client.get(url, headers=headers)
 
     resp = client.get(url, headers=headers)
     if resp.status_code in (401, 403):
