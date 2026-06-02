@@ -101,6 +101,10 @@ def _fetch_with_curl(url: str, headers: dict, fallback_resp: httpx.Response | No
     """Encapsulation de l'appel curl_cffi avec reconstruction d'objet httpx.Response."""
     try:
         from curl_cffi import requests as curl_requests
+        # Pour Decathlon, on remplace le UA aléatoire par un UA compatible Chrome stable
+        if "decathlon" in url:
+            headers["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        
         r = curl_requests.get(url, headers=headers, impersonate="chrome", timeout=30)
         return httpx.Response(
             status_code=r.status_code,
