@@ -18,9 +18,7 @@ from src.scanner import run_pipeline
 
 load_dotenv()
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
 app = FastAPI(
@@ -61,9 +59,7 @@ if __name__ == "__main__":
     # Si des arguments sont passés (ex: --limit), on exécute le pipeline en CLI
     if len(sys.argv) > 1:
         parser = argparse.ArgumentParser(description="Wetall Scanner CLI")
-        parser.add_argument(
-            "--limit", type=int, help="Nombre maximum de produits à scanner"
-        )
+        parser.add_argument("--limit", type=int, help="Nombre maximum de produits à scanner")
         args = parser.parse_args()
 
         logger.info("Exécution du pipeline via CLI (limit=%s)", args.limit)

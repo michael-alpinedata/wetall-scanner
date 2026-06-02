@@ -92,9 +92,7 @@ class TestSmartScanWetallErrors:
     def test_wetall_404_returns_error_tuple(self, smart_scan_impl):
         client = _make_smart_scan_client(wetall_status=404)
         with patch(smart_scan_impl["sleep_path"]):
-            status, code, url_finale, msg = smart_scan_impl["smart_scan"](
-                client, WETALL_URL
-            )
+            status, code, url_finale, msg = smart_scan_impl["smart_scan"](client, WETALL_URL)
 
         assert status == "Erreur Wetall 404"
         assert code == 404
@@ -104,9 +102,7 @@ class TestSmartScanWetallErrors:
     def test_wetall_500_returns_error_tuple(self, smart_scan_impl):
         client = _make_smart_scan_client(wetall_status=500)
         with patch(smart_scan_impl["sleep_path"]):
-            status, code, url_finale, _ = smart_scan_impl["smart_scan"](
-                client, WETALL_URL
-            )
+            status, code, url_finale, _ = smart_scan_impl["smart_scan"](client, WETALL_URL)
 
         assert status == "Erreur Wetall 500"
         assert code == 500
@@ -125,9 +121,7 @@ class TestSmartScanWetallSpecialCases:
     def test_variations_form_returns_variations_status(self, smart_scan_impl):
         client = _make_smart_scan_client(wetall_html=HTML_VARIATIONS_FORM)
         with patch(smart_scan_impl["sleep_path"]):
-            status, code, url_finale, msg = smart_scan_impl["smart_scan"](
-                client, WETALL_URL
-            )
+            status, code, url_finale, msg = smart_scan_impl["smart_scan"](client, WETALL_URL)
 
         assert status == "Variations (Taille/Couleur)"
         assert code == 200
@@ -137,23 +131,17 @@ class TestSmartScanWetallSpecialCases:
     def test_en_rupture_in_wetall_page_returns_rupture(self, smart_scan_impl):
         client = _make_smart_scan_client(wetall_html=HTML_RUPTURE_WETALL)
         with patch(smart_scan_impl["sleep_path"]):
-            status, code, url_finale, msg = smart_scan_impl["smart_scan"](
-                client, WETALL_URL
-            )
+            status, code, url_finale, msg = smart_scan_impl["smart_scan"](client, WETALL_URL)
 
         assert status == "Rupture de stock"
         assert code == 200
         assert url_finale is None
         assert msg == "Marqueur rupture Wetall"
 
-    def test_no_buy_link_no_special_case_returns_bouton_non_trouve(
-        self, smart_scan_impl
-    ):
+    def test_no_buy_link_no_special_case_returns_bouton_non_trouve(self, smart_scan_impl):
         client = _make_smart_scan_client(wetall_html=HTML_NO_BUY_LINK)
         with patch(smart_scan_impl["sleep_path"]):
-            status, code, url_finale, msg = smart_scan_impl["smart_scan"](
-                client, WETALL_URL
-            )
+            status, code, url_finale, msg = smart_scan_impl["smart_scan"](client, WETALL_URL)
 
         assert status == "Bouton non trouvé"
         assert code == 200
@@ -182,25 +170,19 @@ class TestSmartScanMerchantHttpCodes:
             return smart_scan_impl["smart_scan"](client, WETALL_URL)
 
     def test_merchant_403_returns_verification_bloquee(self, smart_scan_impl):
-        status, code, url_finale, msg = self._run_with_merchant_response(
-            smart_scan_impl, 403
-        )
+        status, code, url_finale, msg = self._run_with_merchant_response(smart_scan_impl, 403)
         assert status == "Vérification bloquée (403)"
         assert code == 403
         assert msg == "Pare-feu marchand"
 
     def test_merchant_401_returns_verification_bloquee(self, smart_scan_impl):
         """401 et 403 partagent le même message de retour."""
-        status, code, url_finale, msg = self._run_with_merchant_response(
-            smart_scan_impl, 401
-        )
+        status, code, url_finale, msg = self._run_with_merchant_response(smart_scan_impl, 401)
         assert status == "Vérification bloquée (403)"
         assert code == 401
 
     def test_merchant_404_returns_lien_brise(self, smart_scan_impl):
-        status, code, url_finale, msg = self._run_with_merchant_response(
-            smart_scan_impl, 404
-        )
+        status, code, url_finale, msg = self._run_with_merchant_response(smart_scan_impl, 404)
         assert status == "Lien Brisé (404)"
         assert code == 404
         assert msg == "Erreur 404 serveur"
@@ -220,9 +202,7 @@ class TestSmartScanMerchantHttpCodes:
                 return_value=merchant_resp,
             ),
         ):
-            status, code, url_finale, msg = smart_scan_impl["smart_scan"](
-                client, WETALL_URL
-            )
+            status, code, url_finale, msg = smart_scan_impl["smart_scan"](client, WETALL_URL)
 
         assert status == "OK"
         assert code == 200
@@ -243,9 +223,7 @@ class TestSmartScanMerchantHttpCodes:
                 return_value=merchant_resp,
             ),
         ):
-            status, code, url_finale, msg = smart_scan_impl["smart_scan"](
-                client, WETALL_URL
-            )
+            status, code, url_finale, msg = smart_scan_impl["smart_scan"](client, WETALL_URL)
 
         assert status == "Rupture de stock"
         assert "Amazon" in msg
@@ -254,9 +232,7 @@ class TestSmartScanMerchantHttpCodes:
 class TestSmartScanUrlNormalization:
     """Vérifie que les URLs Amazon relatives sont normalisées avant le scan."""
 
-    def test_relative_amazon_url_is_normalized_before_merchant_call(
-        self, smart_scan_impl
-    ):
+    def test_relative_amazon_url_is_normalized_before_merchant_call(self, smart_scan_impl):
         """
         La page Wetall retourne un lien /dp/... relatif.
         L'URL envoyée à fetch_with_fallback doit commencer par https://www.amazon.fr.
@@ -285,16 +261,12 @@ class TestSmartScanUrlNormalization:
 class TestSmartScanExceptionHandling:
     """Gestion des exceptions imprévues."""
 
-    def test_exception_during_wetall_fetch_returns_erreur_technique(
-        self, smart_scan_impl
-    ):
+    def test_exception_during_wetall_fetch_returns_erreur_technique(self, smart_scan_impl):
         client = MagicMock()
         client.get.side_effect = ConnectionError("réseau indisponible")
 
         with patch(smart_scan_impl["sleep_path"]):
-            status, code, url_finale, msg = smart_scan_impl["smart_scan"](
-                client, WETALL_URL
-            )
+            status, code, url_finale, msg = smart_scan_impl["smart_scan"](client, WETALL_URL)
 
         assert status == "Erreur technique"
         assert code == 0

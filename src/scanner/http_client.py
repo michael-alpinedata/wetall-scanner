@@ -2,31 +2,38 @@
 Couche transport HTTP.
 
 Responsabilité unique : exécuter les requêtes GET avec rotation de User-Agent,
-résolution des liens d'affiliation (Link Synergy) et gestion du client curl_cffi 
+résolution des liens d'affiliation (Link Synergy) et gestion du client curl_cffi
 pour les cibles anti-bot (Decathlon, Alltricks, ASOS, Nike).
 """
 
 import logging
 import random
+
 import httpx
 
 logger = logging.getLogger(__name__)
 
 USER_AGENTS: list[str] = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like "
+    "Gecko) Chrome/121.0.0.0 Safari/537.36",
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
 ]
 
 # Marchands éligibles au traitement d'usurpation TLS Chrome préventif
 HARD_TARGETS: set[str] = {
-    "decathlon.fr", "alltricks.fr", "nike.com", "asos.com", 
-    "onelink.me", "linksynergy.com" # On ajoute les redirecteurs ici
+    "decathlon.fr",
+    "alltricks.fr",
+    "nike.com",
+    "asos.com",
+    "onelink.me",
+    "linksynergy.com",  # On ajoute les redirecteurs ici
 }
 
 
 def build_headers() -> dict[str, str]:
-    """Construit des headers humains complets pour éviter la détection comportementale."""
+    """Construit des headers humains complets
+    pour éviter la détection comportementale."""
     return {
         "User-Agent": random.choice(USER_AGENTS),
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
@@ -38,7 +45,7 @@ def build_headers() -> dict[str, str]:
         "Sec-Fetch-Dest": "document",
         "Sec-Fetch-Mode": "navigate",
         "Sec-Fetch-Site": "none",
-        "Sec-Fetch-User": "?1"
+        "Sec-Fetch-User": "?1",
     }
 
 
@@ -50,26 +57,40 @@ def _is_hard_target(url: str) -> bool:
 
 def resolve_affiliation_link(url: str) -> str:
     """
-    Suit les redirections des plateformes comme Link Synergy (Rakuten) via des requêtes 
+    Suit les redirections des plateformes comme Link Synergy (Rakuten) via des requêtes
     HEAD légères pour extraire l'URL finale du marchand avant le scan de contenu.
     """
     if "linksynergy" not in url.lower():
         return url
-        
+
     logger.info("Détection d'un lien d'affiliation Link Synergy. Résolution de la trajectoire...")
     try:
         from curl_cffi import requests as curl_requests
+
         headers = build_headers()
-        
-        # On remonte la chaîne sans autoriser le redirect automatique pour éviter le tracking anti-bot
-        res = curl_requests.head(url, headers=headers, impersonate="chrome", allow_redirects=False, timeout=15)
+
+        # On remonte la chaîne sans autoriser le redirect automatique
+        # pour éviter le tracking anti-bot
+        res = curl_requests.head(
+            url,
+            headers=headers,
+            impersonate="chrome",
+            allow_redirects=False,
+            timeout=15,
+        )
         while res.status_code in (301, 302):
             next_url = res.headers.get("Location")
             if not next_url:
                 break
             url = next_url
-            res = curl_requests.head(url, headers=headers, impersonate="chrome", allow_redirects=False, timeout=15)
-        
+            res = curl_requests.head(
+                url,
+                headers=headers,
+                impersonate="chrome",
+                allow_redirects=False,
+                timeout=15,
+            )
+
         logger.info("Lien d'affiliation résolu vers : %s", url[:50])
         return url
     except Exception as exc:
@@ -87,7 +108,7 @@ def fetch_with_fallback(client: httpx.Client, url: str, headers: dict[str, str])
         try:
             return _fetch_with_curl(url, headers)
         except Exception as e:
-            logger.warning(f"Échec curl_cffi sur cible sensible {url[:40]}. Fallback vers httpx. Erreur: {e}")
+            logger.warning(f"Échec curl_cffi sur cible sensible {url[:40]}.Fallback vers httpx. Erreur: {e}")
             return client.get(url, headers=headers)
 
     resp = client.get(url, headers=headers)
@@ -101,16 +122,20 @@ def _fetch_with_curl(url: str, headers: dict, fallback_resp: httpx.Response | No
     """Encapsulation de l'appel curl_cffi avec reconstruction d'objet httpx.Response."""
     try:
         from curl_cffi import requests as curl_requests
+
         # Pour Decathlon, on remplace le UA aléatoire par un UA compatible Chrome stable
         if "decathlon" in url:
-            headers["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        
+            headers["User-Agent"] = (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            )
+
         r = curl_requests.get(url, headers=headers, impersonate="chrome", timeout=30)
         return httpx.Response(
             status_code=r.status_code,
             content=r.content,
             headers=httpx.Headers(dict(r.headers)),
-            request=httpx.Request("GET", url)
+            request=httpx.Request("GET", url),
         )
     except Exception as e:
         logger.error(f"Échec curl_cffi sur {url[:40]} : {e}")

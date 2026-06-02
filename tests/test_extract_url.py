@@ -214,9 +214,7 @@ class TestSyncSitemapToDbPersistence:
                                     pour une invocation successive de `cur.executemany`.
         """
         mock_http_client = MagicMock()
-        mock_http_client.get.return_value = make_response(
-            status_code=200, text=sitemap_text
-        )
+        mock_http_client.get.return_value = make_response(status_code=200, text=sitemap_text)
         mock_http_ctx = MagicMock()
         mock_http_ctx.__enter__ = MagicMock(return_value=mock_http_client)
         mock_http_ctx.__exit__ = MagicMock(return_value=False)
@@ -231,9 +229,7 @@ class TestSyncSitemapToDbPersistence:
 
         # Configure mock_cur.executemany to return specific rowcounts
         if mock_executemany_returns:
-            mock_cur.executemany.side_effect = [
-                MagicMock(rowcount=rc) for rc in mock_executemany_returns
-            ]
+            mock_cur.executemany.side_effect = [MagicMock(rowcount=rc) for rc in mock_executemany_returns]
         else:
             # Default to a mock with 0 rowcount if no specific counts are provided
             mock_cur.executemany.return_value = MagicMock(rowcount=0)
@@ -258,14 +254,12 @@ class TestSyncSitemapToDbPersistence:
             extract_url_impl["sync_sitemap_to_db"]()
 
         # Check that executemany was called exactly once for INSERT
-        insert_calls = [
-            c for c in cur.executemany.call_args_list if "INSERT" in str(c[0][0]).upper()
-        ]
-        assert len(insert_calls) == 1 # Expecting one batch insert call
+        insert_calls = [c for c in cur.executemany.call_args_list if "INSERT" in str(c[0][0]).upper()]
+        assert len(insert_calls) == 1  # Expecting one batch insert call
 
         # The second argument to executemany is the list of tuples for insertion
         # Each tuple is (url_wetall, nom_produit, is_active, status_history_jsonb)
-        inserted_products_data = insert_calls[0][0][1] # Get the data from the first executemany call arguments
+        inserted_products_data = insert_calls[0][0][1]  # Get the data from the first executemany call arguments
         inserted_urls = [prod_data[0] for prod_data in inserted_products_data]
 
         assert set(inserted_urls) == set(EXPECTED_PRODUCT_URLS)
@@ -330,9 +324,7 @@ class TestSyncSitemapToDbPersistence:
         inserted_products_data = insert_call_args[0][1]
         inserted_names = [prod_data[1] for prod_data in inserted_products_data]
 
-        expected_names = [
-            extract_url_impl["url_to_name"](url) for url in EXPECTED_PRODUCT_URLS
-        ]
+        expected_names = [extract_url_impl["url_to_name"](url) for url in EXPECTED_PRODUCT_URLS]
         assert set(inserted_names) == set(expected_names)
         assert "Velo Route Carbone" in inserted_names
 
@@ -347,11 +339,7 @@ class TestSyncSitemapToDbPersistence:
         ):
             extract_url_impl["sync_sitemap_to_db"]()
 
-        all_sql_params = [
-            c[0][1]
-            for c in cur.execute.call_args_list
-            if "INSERT" in str(c[0][0]).upper()
-        ]
+        all_sql_params = [c[0][1] for c in cur.execute.call_args_list if "INSERT" in str(c[0][0]).upper()]
         inserted_urls = [p[0] for p in all_sql_params]
         for url in inserted_urls:
             assert "/produit/" in url, f"URL hors /produit/ insérée : {url}"

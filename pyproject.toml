@@ -27,7 +27,7 @@ dev = [
 
 [tool.ruff]
 # Applique le style compatible avec Black
-line-length = 88
+line-length = 120
 src = ["src"]
 
 [tool.ruff.lint]

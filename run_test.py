@@ -1,9 +1,10 @@
 """
 debug_scan.py - Sonde de diagnostic profond pour Wetall-Scanner
 """
+
 import logging
 import sys
-import os
+
 import httpx
 from bs4 import BeautifulSoup
 
@@ -17,17 +18,18 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     handlers=[
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler("debug_execution.log", mode="w", encoding="utf-8")
-    ]
+        logging.FileHandler("debug_execution.log", mode="w", encoding="utf-8"),
+    ],
 )
 logger = logging.getLogger("DeepDebug")
 
 # On rend httpx plus verbeux pour voir les headers réellement envoyés
 logging.getLogger("httpx").setLevel(logging.DEBUG)
 
+
 def run_diagnostic(url_wetall: str):
     logger.info(f"--- DÉBUT DU DIAGNOSTIC SUR : {url_wetall} ---")
-    
+
     headers = build_headers()
     logger.debug(f"Headers générés : {headers}")
 
@@ -35,7 +37,7 @@ def run_diagnostic(url_wetall: str):
         with httpx.Client(follow_redirects=True, timeout=30.0) as client:
             logger.info("Étape 1 : Requête HTTP vers Wetall...")
             resp = client.get(url_wetall, headers=headers)
-            
+
             logger.info(f"Statut HTTP : {resp.status_code}")
             logger.info(f"Headers de réponse : {resp.headers}")
             logger.info(f"Encodage détecté par httpx : {resp.encoding}")
@@ -57,11 +59,11 @@ def run_diagnostic(url_wetall: str):
             # --- VÉRIFICATION DU PARSER ---
             logger.info("Étape 3 : Analyse par BeautifulSoup...")
             soup = BeautifulSoup(html_text, "html.parser")
-            
+
             # Diagnostic spécifique du bouton "Stratégie A"
             logger.info("Recherche du bouton 'single_add_to_cart_button'...")
             btn = soup.find("button", class_="single_add_to_cart_button")
-            
+
             if btn:
                 logger.info(f"✅ BOUTON TROUVÉ : {btn}")
                 form = btn.find_parent("form")
@@ -82,10 +84,11 @@ def run_diagnostic(url_wetall: str):
     except Exception as e:
         logger.exception(f"Échec critique durant le diagnostic : {e}")
 
+
 if __name__ == "__main__":
     # Remplace par une URL de produit qui pose problème
     TEST_URL = "https://www.wetall.fr/produit/manteau-habille-ceinture-a-chevrons-grande-taille-jusquau-48-tall/"
-    
+
     if "URL" in TEST_URL:
         print("⚠️ Modifie TEST_URL dans le script avant de lancer.")
     else:

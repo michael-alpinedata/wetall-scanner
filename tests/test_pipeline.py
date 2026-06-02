@@ -65,7 +65,7 @@ def _make_db_mock(products: list[MagicMock], cdc_update_rowcount: int = 1) -> tu
 
     conn = MagicMock()
     conn.cursor.return_value = cur
-    conn.autocommit = True # Important for pipeline context
+    conn.autocommit = True  # Important for pipeline context
 
     return conn, cur
 
@@ -138,9 +138,7 @@ class TestRunPipelineScanExecution:
         with (
             patch.dict(os.environ, {"DATABASE_URL": "postgresql://fake"}),
             patch(pipeline_impl["psycopg2_path"], return_value=conn),
-            patch(
-                pipeline_impl["smart_scan_path"], return_value=FAKE_SCAN_RESULT
-            ) as mock_scan,
+            patch(pipeline_impl["smart_scan_path"], return_value=FAKE_SCAN_RESULT) as mock_scan,
             patch(pipeline_impl["sleep_path"]),
             patch(pipeline_impl["httpx_client_path"]) as mock_client_cls,
         ):
@@ -174,9 +172,7 @@ class TestRunPipelineScanExecution:
 
             pipeline_impl["run_pipeline"]()
 
-        insert_calls = [
-            c for c in cur.execute.call_args_list if "INSERT" in str(c[0][0]).upper()
-        ]
+        insert_calls = [c for c in cur.execute.call_args_list if "INSERT" in str(c[0][0]).upper()]
         assert len(insert_calls) == len(FAKE_PRODUCTS)
 
     def test_scan_result_tuple_passed_to_insert(self, pipeline_impl):
@@ -198,9 +194,7 @@ class TestRunPipelineScanExecution:
             pipeline_impl["run_pipeline"]()
 
         # Cherche l'appel INSERT dans les exécutions SQL
-        insert_call = next(
-            c for c in cur.execute.call_args_list if "INSERT" in str(c[0][0]).upper()
-        )
+        insert_call = next(c for c in cur.execute.call_args_list if "INSERT" in str(c[0][0]).upper())
         params = insert_call[0][1]  # tuple de paramètres SQL
 
         assert expected_status in params
@@ -212,10 +206,7 @@ class TestRunPipelineScanExecution:
         """Log de progression attendu pour le 10ème produit traité."""
         import logging
 
-        products_10 = [
-            _make_product_row(i, f"https://www.wetall.fr/produit/produit-{i}/")
-            for i in range(1, 11)
-        ]
+        products_10 = [_make_product_row(i, f"https://www.wetall.fr/produit/produit-{i}/") for i in range(1, 11)]
         conn, cur = _make_db_mock(products=products_10)
 
         # Force la capture des logs INFO de tous les modules concernés
@@ -228,9 +219,7 @@ class TestRunPipelineScanExecution:
                 patch(pipeline_impl["httpx_client_path"]) as mock_client_cls,
             ):
                 mock_client = MagicMock()
-                mock_client_cls.return_value.__enter__ = MagicMock(
-                    return_value=mock_client
-                )
+                mock_client_cls.return_value.__enter__ = MagicMock(return_value=mock_client)
                 mock_client_cls.return_value.__exit__ = MagicMock(return_value=False)
 
                 pipeline_impl["run_pipeline"]()
@@ -239,10 +228,7 @@ class TestRunPipelineScanExecution:
         progress_logs = [
             r
             for r in caplog.records
-            if any(
-                word in r.message.lower()
-                for word in ["progression", "fiches", "progress", "trait"]
-            )
+            if any(word in r.message.lower() for word in ["progression", "fiches", "progress", "trait"])
         ]
         assert len(progress_logs) >= 1
 
@@ -275,15 +261,16 @@ class TestRunPipelineErrorHandling:
         assert any("Échec critique du pipeline" in r.message for r in error_logs)
         assert any("connexion refusée" in r.message for r in error_logs)
 
-    def test_smart_scan_error_updates_status_history_and_logs_summary(
-        self, pipeline_impl, caplog
-    ):
+    def test_smart_scan_error_updates_status_history_and_logs_summary(self, pipeline_impl, caplog):
         product_id = 1
         product_url = "https://www.wetall.fr/produit/produit-erreur/"
         # Simulate a product that was initially OK
         initial_status_history = [{"status": "OK", "timestamp": "2023-01-01T00:00:00Z"}]
         product_row = _make_product_row(
-            product_id, product_url, is_active=True, status_history=initial_status_history
+            product_id,
+            product_url,
+            is_active=True,
+            status_history=initial_status_history,
         )
         conn, cur = _make_db_mock(products=[product_row])
 
@@ -297,16 +284,12 @@ class TestRunPipelineErrorHandling:
             with (
                 patch.dict(os.environ, {"DATABASE_URL": "postgresql://fake"}),
                 patch(pipeline_impl["psycopg2_path"], return_value=conn),
-                patch(
-                    pipeline_impl["smart_scan_path"], return_value=error_scan_result
-                ) as mock_smart_scan,
+                patch(pipeline_impl["smart_scan_path"], return_value=error_scan_result) as mock_smart_scan,
                 patch(pipeline_impl["sleep_path"]),
                 patch(pipeline_impl["httpx_client_path"]) as mock_client_cls,
             ):
                 mock_client = MagicMock()
-                mock_client_cls.return_value.__enter__ = MagicMock(
-                    return_value=mock_client
-                )
+                mock_client_cls.return_value.__enter__ = MagicMock(return_value=mock_client)
                 mock_client_cls.return_value.__exit__ = MagicMock(return_value=False)
 
                 pipeline_impl["run_pipeline"]()
@@ -315,37 +298,31 @@ class TestRunPipelineErrorHandling:
         mock_smart_scan.assert_called_once_with(mock_client, product_url)
 
         # 2. Verify fact_stock_status was updated
-        insert_calls = [
-            c for c in cur.execute.call_args_list if "INSERT" in str(c[0][0]).upper()
-        ]
+        insert_calls = [c for c in cur.execute.call_args_list if "INSERT" in str(c[0][0]).upper()]
         assert len(insert_calls) == 1
         # Check params of the INSERT call
         inserted_params = insert_calls[0][0][1]
-        assert inserted_params[0] == product_id # produit_id
+        assert inserted_params[0] == product_id  # produit_id
         # We need to skip datetime (param[1]) as it's dynamic
-        assert inserted_params[2] == error_status # status_code
-        assert inserted_params[3] == error_code # http_code_marchand
-        assert inserted_params[4] is None # url_marchand_finale
-        assert error_debug_msg in inserted_params[5] # debug_info
+        assert inserted_params[2] == error_status  # status_code
+        assert inserted_params[3] == error_code  # http_code_marchand
+        assert inserted_params[4] is None  # url_marchand_finale
+        assert error_debug_msg in inserted_params[5]  # debug_info
 
         # 3. Verify dim_produit.status_history was updated and is_active changed
-        update_calls = [
-            c for c in cur.execute.call_args_list if "UPDATE" in str(c[0][0]).upper()
-        ]
+        update_calls = [c for c in cur.execute.call_args_list if "UPDATE" in str(c[0][0]).upper()]
         assert len(update_calls) == 1
         updated_params = update_calls[0][0][1]
-        assert updated_params[0] is False # is_active should be False
-        assert updated_params[1] is not None # deactivated_at should be set
-        new_history_entry = json.loads(updated_params[2]) # new_history_entry_jsonb
+        assert updated_params[0] is False  # is_active should be False
+        assert updated_params[1] is not None  # deactivated_at should be set
+        new_history_entry = json.loads(updated_params[2])  # new_history_entry_jsonb
         assert new_history_entry["status"] == error_status
         assert new_history_entry["timestamp"] is not None
-        assert updated_params[3] == product_id # produit_id
+        assert updated_params[3] == product_id  # produit_id
 
         # 4. Verify summary logs
         info_logs = [r for r in caplog.records if r.levelname == "INFO"]
-        summary_log = next(
-            (r for r in info_logs if "RÉSUMÉ BATCH DE NUIT" in r.message), None
-        )
+        summary_log = next((r for r in info_logs if "RÉSUMÉ BATCH DE NUIT" in r.message), None)
         assert summary_log is not None
         assert "1 produits traités" in summary_log.message
         assert "1 changements de statut" in summary_log.message
@@ -353,7 +330,4 @@ class TestRunPipelineErrorHandling:
 
         # 5. Verify warning for error status
         warning_logs = [r for r in caplog.records if r.levelname == "WARNING"]
-        assert any(
-            f"Smart scan a renvoyé un statut d'erreur : '{error_status}'" in r.message
-            for r in warning_logs
-        )
+        assert any(f"Smart scan a renvoyé un statut d'erreur : '{error_status}'" in r.message for r in warning_logs)

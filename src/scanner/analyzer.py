@@ -3,6 +3,7 @@ Analyse du statut de stock par marchand.
 """
 
 import re
+
 from bs4 import BeautifulSoup
 
 ScanResult = tuple[str, str]
@@ -17,7 +18,8 @@ _ASOS_OUT_OF_STOCK_MARKERS = ("épuisé", "plus disponible", "out of stock")
 
 def _check_nike(url: str, html: str) -> ScanResult | None:
     html_lower = html.lower()
-    if "nike" not in url and "nike" not in html_lower: return None
+    if "nike" not in url and "nike" not in html_lower:
+        return None
     if any(marker in html_lower for marker in _NIKE_OUT_OF_STOCK_MARKERS):
         return "Rupture de stock", "Nike : Rupture détectée"
     return None
@@ -25,7 +27,8 @@ def _check_nike(url: str, html: str) -> ScanResult | None:
 
 def _check_decathlon(url: str, html: str) -> ScanResult | None:
     html_lower = html.lower()
-    if "decathlon" not in url and "decathlon" not in html_lower: return None
+    if "decathlon" not in url and "decathlon" not in html_lower:
+        return None
     if any(marker in html_lower for marker in _DECATHLON_OUT_OF_STOCK_MARKERS):
         return "Rupture de stock", "Decathlon : Rupture détectée"
     return None
@@ -33,16 +36,17 @@ def _check_decathlon(url: str, html: str) -> ScanResult | None:
 
 def _check_amazon(url: str, html: str) -> ScanResult | None:
     html_lower = html.lower()
-    if "amazon" not in url and "amazon" not in html_lower: return None
-    
+    if "amazon" not in url and "amazon" not in html_lower:
+        return None
+
     # 1. Vérification immédiate des liens morts 404
     if any(marker in html_lower for marker in _AMAZON_DEAD_LINK_MARKERS):
         return "Lien Mort (404 déguisé)", "Amazon : 404 déguisée"
-    
+
     # 2. Si le marqueur "indisponible" est détecté, on investigue les variantes
     if any(marker in html_lower for marker in _AMAZON_OUT_OF_STOCK_MARKERS):
         soup = BeautifulSoup(html, "html.parser")
-        
+
         # --- Cas A : Sélecteur de taille de type Dropdown (<select>) ---
         dropdown = soup.find("select", id="native_dropdown_selected_size_name")
         if dropdown:
@@ -64,13 +68,14 @@ def _check_amazon(url: str, html: str) -> ScanResult | None:
 
         # Si aucun sélecteur n'existe ou si toutes les déclinaisons sont confirmées absentes : vraie rupture.
         return "Rupture de stock", "Amazon : Rupture détectée"
-        
+
     return None
 
 
 def _check_alltricks(url: str, html: str) -> ScanResult | None:
     html_lower = html.lower()
-    if "alltricks" not in url and "alltricks" not in html_lower: return None
+    if "alltricks" not in url and "alltricks" not in html_lower:
+        return None
     if any(marker in html_lower for marker in _ALLTRICKS_OUT_OF_STOCK_MARKERS):
         return "Rupture de stock", "Alltricks : Rupture détectée"
     return None
@@ -79,14 +84,21 @@ def _check_alltricks(url: str, html: str) -> ScanResult | None:
 def _check_asos(url: str, html: str) -> ScanResult | None:
     """Règles de détection ASOS."""
     html_lower = html.lower()
-    if "asos" not in url and "asos" not in html_lower: return None
+    if "asos" not in url and "asos" not in html_lower:
+        return None
     if any(marker in html_lower for marker in _ASOS_OUT_OF_STOCK_MARKERS):
         return "Rupture de stock", "ASOS : Rupture détectée"
     return None
 
 
 # Extension du registre des règles métiers
-_MERCHANT_RULES = [_check_nike, _check_decathlon, _check_amazon, _check_alltricks, _check_asos]
+_MERCHANT_RULES = [
+    _check_nike,
+    _check_decathlon,
+    _check_amazon,
+    _check_alltricks,
+    _check_asos,
+]
 _DEFAULT_RESULT: ScanResult = ("OK", "Scan réussi")
 
 

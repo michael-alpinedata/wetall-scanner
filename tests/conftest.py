@@ -116,22 +116,14 @@ HTML_WETALL_AMAZON_RELATIVE = """
 """
 
 HTML_AMAZON_OK = "<html><body><p>En stock. Livraison rapide.</p></body></html>"
-HTML_AMAZON_404_DISGUISED = (
-    "<html><body><p>n'est pas une page fonctionnelle</p></body></html>"
-)
+HTML_AMAZON_404_DISGUISED = "<html><body><p>n'est pas une page fonctionnelle</p></body></html>"
 HTML_AMAZON_OUT_OF_STOCK = "<html><body><p>actuellement indisponible</p></body></html>"
-HTML_AMAZON_RESTOCKED = (
-    "<html><body><p>nouveau approvisionné prochainement</p></body></html>"
-)
-HTML_NIKE_OUT_OF_STOCK = (
-    "<html><body><p>Ce produit est plus disponible.</p></body></html>"
-)
+HTML_AMAZON_RESTOCKED = "<html><body><p>nouveau approvisionné prochainement</p></body></html>"
+HTML_NIKE_OUT_OF_STOCK = "<html><body><p>Ce produit est plus disponible.</p></body></html>"
 HTML_NIKE_INDISPONIBLE = "<html><body><p>Article indisponible.</p></body></html>"
 HTML_NIKE_RUPTURE = "<html><body><p>En rupture temporaire.</p></body></html>"
 HTML_NIKE_OK = "<html><body><p>Ajouter au panier.</p></body></html>"
-HTML_DECATHLON_INDISPONIBLE = (
-    "<html><body><p>Article indisponible en ligne.</p></body></html>"
-)
+HTML_DECATHLON_INDISPONIBLE = "<html><body><p>Article indisponible en ligne.</p></body></html>"
 HTML_DECATHLON_RUPTURE = "<html><body><p>En rupture.</p></body></html>"
 HTML_DECATHLON_EN_RUPTURE = "<html><body><p>En rupture de stock.</p></body></html>"
 HTML_DECATHLON_OK = "<html><body><p>Disponible en ligne.</p></body></html>"

@@ -114,18 +114,14 @@ def _upsert_products(cur: psycopg2.extensions.cursor, sitemap_urls: list[str]) -
 
     if products_to_reactivate:
         # (is_active, deactivated_at, new_history_entry, produit_id)
-        reactivation_data = [
-            (True, None, history_entry, prod_id)
-            for prod_id, history_entry in products_to_reactivate
-        ]
+        reactivation_data = [(True, None, history_entry, prod_id) for prod_id, history_entry in products_to_reactivate]
         cur.executemany(_UPDATE_PRODUCT_CDC_SQL, reactivation_data)
         reactivated_count = cur.rowcount
 
     if products_to_deactivate:
         # (is_active, deactivated_at, new_history_entry, produit_id)
         deactivation_data = [
-            (False, now_utc, history_entry, prod_id)
-            for prod_id, history_entry in products_to_deactivate
+            (False, now_utc, history_entry, prod_id) for prod_id, history_entry in products_to_deactivate
         ]
         cur.executemany(_UPDATE_PRODUCT_CDC_SQL, deactivation_data)
         deactivated_count = cur.rowcount
@@ -152,7 +148,7 @@ def sync_sitemap_to_db() -> None:
         return  # Les erreurs sont déjà loggées dans fetch_product_urls
 
     try:
-        conn = psycopg2.connect(db_url, cursor_factory=DictCursor) # Use DictCursor for easier row access
+        conn = psycopg2.connect(db_url, cursor_factory=DictCursor)  # Use DictCursor for easier row access
         conn.autocommit = True
         cur = conn.cursor()
 
@@ -167,7 +163,7 @@ def sync_sitemap_to_db() -> None:
             new_count,
             reactivated_count,
             deactivated_count,
-            len(product_urls) - (new_count + reactivated_count)
+            len(product_urls) - (new_count + reactivated_count),
         )
 
     except Exception as exc:

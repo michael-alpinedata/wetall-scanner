@@ -142,17 +142,13 @@ def run_pipeline(limit: int = None, mode: str = "standard"):
                 status_history_in_db = row["status_history"]
 
                 if i % _LOG_PROGRESS_EVERY == 0:
-                    logger.info(
-                        "Progression : %s/%s fiches traitées.", i, len(products)
-                    )
+                    logger.info("Progression : %s/%s fiches traitées.", i, len(products))
 
                 status, code, final_url, debug_msg = smart_scan(client, url_wetall)
 
                 if status in ("Erreur technique", "Fail Wetall") or "Erreur" in status:
                     nb_errors += 1
-                    logger.warning(
-                        "Smart scan a renvoyé un statut d'erreur : '%s'", status
-                    )
+                    logger.warning("Smart scan a renvoyé un statut d'erreur : '%s'", status)
 
                 # CDC Logic
                 now_utc = datetime.now(timezone.utc)
@@ -161,14 +157,10 @@ def run_pipeline(limit: int = None, mode: str = "standard"):
 
                 last_known_status_from_history = None
                 if status_history_in_db and isinstance(status_history_in_db, list):
-                    last_known_status_from_history = status_history_in_db[-1].get(
-                        "status"
-                    )
+                    last_known_status_from_history = status_history_in_db[-1].get("status")
 
                 new_is_active_for_dim_produit = status == "OK"
-                new_deactivated_at_for_dim_produit = (
-                    None if new_is_active_for_dim_produit else now_utc
-                )
+                new_deactivated_at_for_dim_produit = None if new_is_active_for_dim_produit else now_utc
 
                 if (status != last_known_status_from_history) or (
                     new_is_active_for_dim_produit != current_is_active_in_db
@@ -188,8 +180,7 @@ def run_pipeline(limit: int = None, mode: str = "standard"):
         cur.close()
         conn.close()
         logger.info(
-            "RÉSUMÉ BATCH DE NUIT : %s produits traités, %s changements de statut, "
-            "%s erreurs de scan.",
+            "RÉSUMÉ BATCH DE NUIT : %s produits traités, %s changements de statut, %s erreurs de scan.",
             len(products),
             nb_status_changes,
             nb_errors,

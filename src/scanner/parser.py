@@ -28,14 +28,18 @@ def get_buy_link_from_wetall(soup: BeautifulSoup) -> tuple[str | None, str | Non
             return form.get("action"), "Lien via formulaire"
 
     # --- Stratégie B : liens /out/ ---
-    out_links = [
-        a["href"] for a in soup.find_all("a", href=True) if "/out/" in a["href"]
-    ]
+    out_links = [a["href"] for a in soup.find_all("a", href=True) if "/out/" in a["href"]]
     if out_links:
         return out_links[0], "Lien via fallback /out/"
 
     # --- Stratégie C : liens marchands directs ---
-    merchant_domains = ["amazon.fr", "decathlon.fr", "alltricks.fr", "nike.com", "asos.com"]
+    merchant_domains = [
+        "amazon.fr",
+        "decathlon.fr",
+        "alltricks.fr",
+        "nike.com",
+        "asos.com",
+    ]
     for a in soup.find_all("a", href=True):
         if any(domain in a["href"] for domain in merchant_domains):
             return a["href"], "Lien via détection domaine marchand"
