@@ -40,6 +40,12 @@ def get_buy_link_from_wetall(soup: BeautifulSoup) -> tuple[str | None, str | Non
         if any(domain in a["href"] for domain in merchant_domains):
             return a["href"], "Lien via détection domaine marchand"
 
+    # --- Stratégie D : Motifs spécifiques Amazon (relatifs) ---
+    for a in soup.find_all("a", href=True):
+        href = a["href"]
+        if href.startswith(("/dp/", "dp/", "/gp/")):
+            return href, "Lien via motif relatif Amazon"
+
     return None, None
 
 
