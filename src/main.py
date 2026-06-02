@@ -60,10 +60,11 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         parser = argparse.ArgumentParser(description="Wetall Scanner CLI")
         parser.add_argument("--limit", type=int, help="Nombre maximum de produits à scanner")
+        parser.add_argument("--mode", type=str, help="standard ou discover")
         args = parser.parse_args()
 
         logger.info("Exécution du pipeline via CLI (limit=%s)", args.limit)
-        run_pipeline(limit=args.limit)
+        run_pipeline(limit=args.limit, mode=args.mode)
     else:
         # Sinon, on lance le serveur API
         import uvicorn

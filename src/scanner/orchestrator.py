@@ -137,10 +137,11 @@ def _scan_merchant(client: httpx.Client, buy_link: str, headers: dict) -> ScanOu
     resp = fetch_with_fallback(client, buy_link, headers)
 
     if resp.status_code in (401, 403, 503):
-        logger.warning(f"Blocage {resp.status_code} détecté sur {merchant}. Auto-healing...")
-        fix = _execute_auto_healing(merchant, buy_link, f"HTTP {resp.status_code}")
-        pr = _deploy_pull_request_healing(merchant, fix)
-        _send_email_report(merchant, buy_link, f"HTTP {resp.status_code}", pr)
+        logger.warning(f"Blocage {resp.status_code} détecté sur {merchant}. ")
+        # logger.warning(f"Blocage {resp.status_code} détecté sur {merchant}. Auto-healing...")
+        # fix = _execute_auto_healing(merchant, buy_link, f"HTTP {resp.status_code}")
+        # pr = _deploy_pull_request_healing(merchant, fix)
+        # _send_email_report(merchant, buy_link, f"HTTP {resp.status_code}", pr)
         return (
             "Vérification bloquée (403)",
             resp.status_code,

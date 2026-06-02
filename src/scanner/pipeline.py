@@ -112,6 +112,16 @@ def _update_product_status_history(
     )
 
 
+def _update_dim_product_fields(cur, produit_id, final_url, http_code):
+    """Met à jour les informations techniques sans toucher au statut is_active."""
+    sql = """
+        UPDATE dim_produit
+        SET url_marchand_finale = %s
+        WHERE produit_id = %s;
+    """
+    cur.execute(sql, (final_url, produit_id))
+
+
 def run_pipeline(limit: int = None, mode: str = "standard"):
     if limit is None:
         limit = DEFAULT_NB_PRODUCT_SCANNED
@@ -144,13 +154,18 @@ def run_pipeline(limit: int = None, mode: str = "standard"):
                 if i % _LOG_PROGRESS_EVERY == 0:
                     logger.info("Progression : %s/%s fiches traitées.", i, len(products))
 
+                # 1. Scan
                 status, code, final_url, debug_msg = smart_scan(client, url_wetall)
 
                 if status in ("Erreur technique", "Fail Wetall") or "Erreur" in status:
                     nb_errors += 1
                     logger.warning("Smart scan a renvoyé un statut d'erreur : '%s'", status)
 
-                # CDC Logic
+                # 2. Mise à jour TECHNIQUE (URL et Code HTTP) - NE TOUCHE PAS À IS_ACTIVE
+                if final_url:
+                    _update_dim_product_fields(cur, produit_id, final_url, code)
+
+                # 3. CDC Logic (Gestion du statut is_active)
                 now_utc = datetime.now(timezone.utc)
                 new_status_entry = {"status": status, "timestamp": now_utc.isoformat()}
                 new_status_entry_jsonb = json.dumps(new_status_entry)
@@ -180,12 +195,8 @@ def run_pipeline(limit: int = None, mode: str = "standard"):
         cur.close()
         conn.close()
         logger.info(
-            "RÉSUMÉ BATCH DE NUIT : %s produits traités, %s changements de statut, %s erreurs de scan.",
-            len(products),
-            nb_status_changes,
-            nb_errors,
+            "Batch terminé : %s produits, %s changements, %s erreurs.", len(products), nb_status_changes, nb_errors
         )
-        logger.info("Batch terminé avec succès.")
 
     except Exception as exc:
         logger.error("Échec critique du pipeline : %s", exc, exc_info=True)
