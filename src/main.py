@@ -39,30 +39,31 @@ async def healthcheck():
     return {"status": "ok"}
 
 
+# Dans src/scanner/main.py
+
+
 @app.post("/trigger-scan")
 async def trigger_scan(
     background_tasks: BackgroundTasks,
     x_secret_key: str = Header(None),
+    mode: str = "standard",  # Ajoute ce paramètre
+    limit: int = 50,  # Ajoute ce paramètre
 ):
-    """
-    Déclenche le batch de nuit en arrière-plan.
-
-    Le header `X-Secret-Key` doit correspondre à la variable SCAN_SECRET_KEY.
-    """
     if not x_secret_key or x_secret_key != API_SECRET:
-        logger.warning("Tentative de déclenchement avec une clé invalide ou absente.")
-        raise HTTPException(status_code=401, detail="Clé secrète invalide ou absente")
+        raise HTTPException(status_code=401, detail="Clé invalide")
 
-    background_tasks.add_task(run_pipeline)
-    logger.info("Batch de nuit déclenché via /trigger-scan.")
-    return {"message": "Scan lancé en arrière-plan"}
+    # Passe les paramètres à ton pipeline
+    background_tasks.add_task(run_pipeline, limit=limit, mode=mode)
+    return {"message": f"Scan {mode} lancé pour {limit} produits"}
 
 
 if __name__ == "__main__":
     # Si des arguments sont passés (ex: --limit), on exécute le pipeline en CLI
     if len(sys.argv) > 1:
         parser = argparse.ArgumentParser(description="Wetall Scanner CLI")
-        parser.add_argument("--limit", type=int, help="Nombre maximum de produits à scanner")
+        parser.add_argument(
+            "--limit", type=int, help="Nombre maximum de produits à scanner"
+        )
         args = parser.parse_args()
 
         logger.info("Exécution du pipeline via CLI (limit=%s)", args.limit)

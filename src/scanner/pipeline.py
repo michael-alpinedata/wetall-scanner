@@ -59,8 +59,17 @@ def _get_db_connection(db_url: str) -> psycopg2.extensions.connection:
     return conn
 
 
-def _fetch_products(cur: psycopg2.extensions.cursor, limit: int) -> list:
-    cur.execute(_FETCH_PRODUCTS_SQL, (limit,))
+# Dans src/scanner/pipeline.py
+def _fetch_products(cur, limit, mode="standard"):
+    if mode == "discovery":
+        # Priorité absolue aux URLs manquantes
+        sql = """SELECT produit_id, url_wetall FROM dim_produit 
+                 WHERE url_marchand_finale IS NULL OR url_marchand_finale = '' 
+                 LIMIT %s;"""
+    else:
+        # Ton SQL actuel de batch de nuit
+        sql = _FETCH_PRODUCTS_SQL
+    cur.execute(sql, (limit,))
     return cur.fetchall()
 
 
@@ -103,7 +112,7 @@ def _update_product_status_history(
     )
 
 
-def run_pipeline(limit: int | None = None) -> None:
+def run_pipeline(limit: int = None, mode: str = "standard"):
     if limit is None:
         limit = DEFAULT_NB_PRODUCT_SCANNED
 
@@ -115,7 +124,7 @@ def run_pipeline(limit: int | None = None) -> None:
     try:
         conn = _get_db_connection(db_url)
         cur = conn.cursor()
-        products = _fetch_products(cur, limit)
+        products = _fetch_products(cur, limit, mode=mode)
 
         if not products:
             cur.close()
@@ -133,13 +142,17 @@ def run_pipeline(limit: int | None = None) -> None:
                 status_history_in_db = row["status_history"]
 
                 if i % _LOG_PROGRESS_EVERY == 0:
-                    logger.info("Progression : %s/%s fiches traitées.", i, len(products))
+                    logger.info(
+                        "Progression : %s/%s fiches traitées.", i, len(products)
+                    )
 
                 status, code, final_url, debug_msg = smart_scan(client, url_wetall)
 
                 if status in ("Erreur technique", "Fail Wetall") or "Erreur" in status:
                     nb_errors += 1
-                    logger.warning("Smart scan a renvoyé un statut d'erreur : '%s'", status)
+                    logger.warning(
+                        "Smart scan a renvoyé un statut d'erreur : '%s'", status
+                    )
 
                 # CDC Logic
                 now_utc = datetime.now(timezone.utc)
@@ -175,7 +188,8 @@ def run_pipeline(limit: int | None = None) -> None:
         cur.close()
         conn.close()
         logger.info(
-            "RÉSUMÉ BATCH DE NUIT : %s produits traités, %s changements de statut, %s erreurs de scan.",
+            "RÉSUMÉ BATCH DE NUIT : %s produits traités, %s changements de statut, "
+            "%s erreurs de scan.",
             len(products),
             nb_status_changes,
             nb_errors,
