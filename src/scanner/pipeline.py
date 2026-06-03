@@ -43,12 +43,12 @@ _INSERT_SCAN_SQL = """
 _UPDATE_PRODUCT_CDC_SQL_PIPELINE = """
     UPDATE dim_produit
     SET
-        is_active = %s,
-        deactivated_at = %s,
+        status_changed_at = %s,
         status_history = status_history || %s::jsonb
     WHERE
         produit_id = %s;
 """
+#         -- is_active = %s,
 
 _LOG_PROGRESS_EVERY = 10
 
@@ -73,7 +73,7 @@ def _fetch_products(cur, limit, mode="standard"):
     return cur.fetchall()
 
 
-def _insert_scan_result(
+def _insert_fact_scan_result(
     cur: psycopg2.extensions.cursor,
     produit_id: int,
     status: str,
@@ -94,18 +94,18 @@ def _insert_scan_result(
     )
 
 
-def _update_product_status_history(
+def _update_dim_product_status_history(
     cur: psycopg2.extensions.cursor,
     produit_id: int,
-    is_active: bool,
-    deactivated_at: datetime | None,
+    # is_active: bool,
+    status_changed_at: datetime | None,
     new_history_entry_jsonb: str,
 ) -> None:
     cur.execute(
         _UPDATE_PRODUCT_CDC_SQL_PIPELINE,
         (
-            is_active,
-            deactivated_at,
+            # is_active,
+            status_changed_at,
             new_history_entry_jsonb,
             produit_id,
         ),
@@ -113,7 +113,7 @@ def _update_product_status_history(
 
 
 def _update_dim_product_fields(cur, produit_id, final_url, http_code):
-    """Met à jour les informations techniques sans toucher au statut is_active."""
+    """Met à jour l'url_marchand_finale."""
     sql = """
         UPDATE dim_produit
         SET url_marchand_finale = %s
@@ -137,12 +137,24 @@ def run_pipeline(limit: int = None, mode: str = "standard"):
         products = _fetch_products(cur, limit, mode=mode)
 
         if not products:
+            logger.info("Aucun produit à scanner.")
             cur.close()
             conn.close()
             return
 
         nb_status_changes = 0
         nb_errors = 0
+
+        # TODO - pour l'instant, un scan de wetall ne doit pas desactiver le produit
+        # dans le catalogue, seul un scan de la sitemap le peut (avec extract_url)
+        # on pourrait faire des statuts dans la dim_produits 
+        # 'is_link_broken', 'is_out_of_stock' 
+        # (en SCD 2, avec suivi des dates de changement de statut)
+        STATUS_CRITIQUES_DESACTIVATION = (
+            # "Lien Brisé (404)",
+            # "Erreur Wetall 404",
+            # "Bouton non trouvé",
+        )
 
         with httpx.Client(follow_redirects=True, timeout=60.0) as client:
             for i, row in enumerate(products, start=1):
@@ -152,11 +164,17 @@ def run_pipeline(limit: int = None, mode: str = "standard"):
                 status_history_in_db = row["status_history"]
 
                 if i % _LOG_PROGRESS_EVERY == 0:
-                    logger.info("Progression : %s/%s fiches traitées.", i, len(products))
+                    logger.info(
+                        "Progression : %s/%s fiches traitées.", i, len(products)
+                    )
 
                 # 1. Scan
                 status, code, final_url, debug_msg = smart_scan(client, url_wetall)
 
+                # 1. Insertion systématique (Trace d'audit pour le debug)
+                _insert_fact_scan_result(cur, produit_id, status, code, final_url, debug_msg)
+
+                # 2. Gestion des erreurs techniques (Pas de mise à jour produit)
                 if status in ("Erreur technique", "Fail Wetall") or "Erreur" in status:
                     nb_errors += 1
                     logger.warning("Smart scan a renvoyé un statut d'erreur : '%s'", status)
@@ -170,32 +188,46 @@ def run_pipeline(limit: int = None, mode: str = "standard"):
                 new_status_entry = {"status": status, "timestamp": now_utc.isoformat()}
                 new_status_entry_jsonb = json.dumps(new_status_entry)
 
-                last_known_status_from_history = None
+                last_known_status = None
                 if status_history_in_db and isinstance(status_history_in_db, list):
-                    last_known_status_from_history = status_history_in_db[-1].get("status")
+                    last_known_status = status_history_in_db[-1].get("status")
 
-                new_is_active_for_dim_produit = status == "OK"
-                new_deactivated_at_for_dim_produit = None if new_is_active_for_dim_produit else now_utc
+                #  on ne touche pas à is_active
+                new_is_active = status not in STATUS_CRITIQUES_DESACTIVATION
 
-                if (status != last_known_status_from_history) or (
-                    new_is_active_for_dim_produit != current_is_active_in_db
+                if new_is_active:
+                    new_status_at = None
+                else:
+                    new_status_at = (
+                        now_utc
+                        if current_is_active_in_db
+                        else row.get("status_changed_at")
+                    )
+
+                # TODO: Mise à jour si changement réel
+                # A réécrire pour MAJ d'autre chose que is_active (is_link_broken,
+                # is out_of_stock)
+                # ID : pour l'instant met juste à jour le status_entry
+                if (status != last_known_status) or (
+                    new_is_active != current_is_active_in_db
                 ):
                     nb_status_changes += 1
-                    _update_product_status_history(
+                    _update_dim_product_status_history(
                         cur,
                         produit_id,
-                        new_is_active_for_dim_produit,
-                        new_deactivated_at_for_dim_produit,
+                        new_status_at,
                         new_status_entry_jsonb,
                     )
 
-                _insert_scan_result(cur, produit_id, status, code, final_url, debug_msg)
                 time.sleep(random.uniform(5, 12))
 
         cur.close()
         conn.close()
         logger.info(
-            "Batch terminé : %s produits, %s changements, %s erreurs.", len(products), nb_status_changes, nb_errors
+            "RÉSUMÉ BATCH : %s traités, %s changements, %s erreurs.",
+            len(products),
+            nb_status_changes,
+            nb_errors,
         )
 
     except Exception as exc:
