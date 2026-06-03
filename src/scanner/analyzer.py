@@ -91,22 +91,46 @@ def _check_asos(url: str, html: str) -> ScanResult | None:
     return None
 
 
+def _check_amazon_success(url: str, html: str) -> ScanResult | None:
+    if "amazon" in url and (
+        'id="add-to-cart-button"' in html or "ajouter au panier" in html.lower()
+    ):
+        return "OK", "Amazon : Stock confirmé"
+    return None
+
+
 # Extension du registre des règles métiers
+# IMPORTANT : Place amazon_success AVANT les autres règles amazon pour qu'il soit prioritaire
 _MERCHANT_RULES = [
     _check_nike,
     _check_decathlon,
-    _check_amazon,
+    _check_amazon_success,  # Ajouté ici
+    _check_amazon,  # Il reste ici pour détecter les ruptures
     _check_alltricks,
     _check_asos,
 ]
+
 _DEFAULT_RESULT: ScanResult = ("OK", "Scan réussi")
 
 
 def analyze_merchant_status(url: str, html: str) -> ScanResult:
     url_lower = url.lower()
-    # On transmet le HTML brut aux règles pour que BeautifulSoup conserve la casse des balises
+    html_lower = html.lower()
+
+    # 1. Protection : Si l'URL est celle de Wetall, on ignore les règles marchands
+    # car le HTML contient souvent des signatures qui induisent en erreur.
+    if "wetall.fr" in url_lower:
+        return _DEFAULT_RESULT
+
+    # 2. Exécution des règles uniquement si on est sur le domaine du marchand
     for rule in _MERCHANT_RULES:
         result = rule(url_lower, html)
         if result is not None:
             return result
+
+    # 3. Validation par défaut pour Amazon si aucun marker n'est trouvé
+    # Si on est sur Amazon mais qu'aucun marker de rupture n'est là, c'est probablement OK
+    if "amazon" in url_lower:
+        return "OK", "Scan réussi"
+
     return _DEFAULT_RESULT

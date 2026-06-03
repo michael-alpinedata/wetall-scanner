@@ -54,7 +54,9 @@ def _url_to_product_name(url: str) -> str:
     return slug.replace("-", " ").title()
 
 
-def _upsert_products(cur: psycopg2.extensions.cursor, sitemap_urls: list[str]) -> tuple[int, int, int]:
+def _upsert_products(
+    cur: psycopg2.extensions.cursor, sitemap_urls: list[str]
+) -> tuple[int, int, int]:
     """
     Synchronise les URLs du sitemap avec la table dim_produit, en gérant le CDC.
 
@@ -110,7 +112,7 @@ def _upsert_products(cur: psycopg2.extensions.cursor, sitemap_urls: list[str]) -
 
     if new_products_to_insert:
         cur.executemany(_INSERT_NEW_PRODUCT_SQL, new_products_to_insert)
-        newly_inserted_count = cur.rowcount
+        newly_inserted_count = len(new_products_to_insert)
 
     if products_to_reactivate:
         # (is_active, deactivated_at, new_history_entry, produit_id)
@@ -148,11 +150,15 @@ def sync_sitemap_to_db() -> None:
         return  # Les erreurs sont déjà loggées dans fetch_product_urls
 
     try:
-        conn = psycopg2.connect(db_url, cursor_factory=DictCursor)  # Use DictCursor for easier row access
+        conn = psycopg2.connect(
+            db_url, cursor_factory=DictCursor
+        )  # Use DictCursor for easier row access
         conn.autocommit = True
         cur = conn.cursor()
 
-        new_count, reactivated_count, deactivated_count = _upsert_products(cur, product_urls)
+        new_count, reactivated_count, deactivated_count = _upsert_products(
+            cur, product_urls
+        )
 
         cur.close()
         conn.close()
