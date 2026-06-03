@@ -27,25 +27,22 @@ HARD_TARGETS: set[str] = {
     "nike.com",
     "asos.com",
     "onelink.me",
-    "linksynergy.com",  # On ajoute les redirecteurs ici
+    "linksynergy.com",
+    "amazon.fr",  # On ajoute les redirecteurs ici
 }
 
 
 def build_headers() -> dict[str, str]:
-    """Construit des headers humains complets
-    pour éviter la détection comportementale."""
+    """Construit des headers humains complets."""
     return {
         "User-Agent": random.choice(USER_AGENTS),
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-        "Accept-Language": "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7",
-        "Accept-Encoding": "gzip, deflate, br",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "fr-FR,fr;q=0.9,en-US;q=0.8",
+        # Force 'identity' pour éviter les problèmes de décodage Gzip sur les blocages 403
+        "Accept-Encoding": "identity",
         "Connection": "keep-alive",
         "Upgrade-Insecure-Requests": "1",
         "Referer": "https://www.google.com/",
-        "Sec-Fetch-Dest": "document",
-        "Sec-Fetch-Mode": "navigate",
-        "Sec-Fetch-Site": "none",
-        "Sec-Fetch-User": "?1",
     }
 
 
@@ -55,70 +52,89 @@ def _is_hard_target(url: str) -> bool:
     return any(target in url_lower for target in HARD_TARGETS)
 
 
+from urllib.parse import urlparse, parse_qs, unquote
+from curl_cffi import requests as curl_requests
+
+
 def resolve_affiliation_link(url: str) -> str:
     """
-    Suit les redirections des plateformes comme Link Synergy (Rakuten) via des requêtes
-    HEAD légères pour extraire l'URL finale du marchand avant le scan de contenu.
+    Tente d'extraire l'URL cible via parsing (rapide),
+    puis fallback sur la résolution réseau (HEAD) si nécessaire.
     """
-    if "linksynergy" not in url.lower():
-        return url
+    # 1. TENTATIVE RAPIDE : Parsing logique
+    if "linksynergy" in url.lower():
+        parsed = urlparse(url)
+        params = parse_qs(parsed.query)
+        # LinkSynergy utilise 'murl' pour la destination finale
+        murl = params.get("murl") or params.get("url")
+        if murl:
+            return unquote(murl[0])
 
-    logger.info("Détection d'un lien d'affiliation Link Synergy. Résolution de la trajectoire...")
-    try:
-        from curl_cffi import requests as curl_requests
+    # 2. FALLBACK RÉSEAU : Si pas d'extraction possible, on résout la chaîne
+    if "linksynergy" in url.lower():
+        logger.info("Résolution réseau requise pour lien Link Synergy...")
+        try:
+            headers = build_headers()
+            current_url = url
 
-        headers = build_headers()
+            # Limite de 5 redirections pour éviter les boucles infinies
+            for _ in range(5):
+                res = curl_requests.head(
+                    current_url,
+                    headers=headers,
+                    impersonate="chrome",
+                    allow_redirects=False,
+                    timeout=10,
+                )
 
-        # On remonte la chaîne sans autoriser le redirect automatique
-        # pour éviter le tracking anti-bot
-        res = curl_requests.head(
-            url,
-            headers=headers,
-            impersonate="chrome",
-            allow_redirects=False,
-            timeout=15,
-        )
-        while res.status_code in (301, 302):
-            next_url = res.headers.get("Location")
-            if not next_url:
-                break
-            url = next_url
-            res = curl_requests.head(
-                url,
-                headers=headers,
-                impersonate="chrome",
-                allow_redirects=False,
-                timeout=15,
-            )
+                if res.status_code in (301, 302, 303, 307, 308):
+                    current_url = res.headers.get("Location")
+                    if not current_url:
+                        break
+                else:
+                    break
 
-        logger.info("Lien d'affiliation résolu vers : %s", url[:50])
-        return url
-    except Exception as exc:
-        logger.error("Échec de la résolution du lien d'affiliation : %s", exc)
-        return url
+            logger.info("Lien résolu via réseau : %s", current_url[:50])
+            return current_url
+
+        except Exception as exc:
+            logger.error("Échec résolution réseau : %s", exc)
+            return url
+
+    return url
 
 
-def fetch_with_fallback(client: httpx.Client, url: str, headers: dict[str, str]) -> httpx.Response:
+def fetch_with_fallback(
+    client: httpx.Client, url: str, headers: dict[str, str]
+) -> httpx.Response:
     """
     Exécute la requête de scraping. Utilise directement curl_cffi pour les cibles sensibles
     afin de protéger l'IP, sinon utilise httpx avec un fallback curl_cffi en cas d'erreur.
     """
     if _is_hard_target(url):
-        logger.info(f"Cible sensible détectée ({url[:40]}). Utilisation directe de curl_cffi.")
+        logger.info(
+            f"Cible sensible détectée ({url[:40]}). Utilisation directe de curl_cffi."
+        )
         try:
             return _fetch_with_curl(url, headers)
         except Exception as e:
-            logger.warning(f"Échec curl_cffi sur cible sensible {url[:40]}.Fallback vers httpx. Erreur: {e}")
+            logger.warning(
+                f"Échec curl_cffi sur cible sensible {url[:40]}. Fallback vers httpx. Erreur: {e}"
+            )
             return client.get(url, headers=headers)
 
     resp = client.get(url, headers=headers)
     if resp.status_code in (401, 403):
-        logger.warning(f"Blocage {resp.status_code} sur {url[:40]}. Tentative de fallback curl_cffi.")
+        logger.warning(
+            f"Blocage {resp.status_code} sur {url[:40]}. Tentative de fallback curl_cffi."
+        )
         return _fetch_with_curl(url, headers, fallback_resp=resp)
     return resp
 
 
-def _fetch_with_curl(url: str, headers: dict, fallback_resp: httpx.Response | None = None) -> httpx.Response:
+def _fetch_with_curl(
+    url: str, headers: dict, fallback_resp: httpx.Response | None = None
+) -> httpx.Response:
     """Encapsulation de l'appel curl_cffi avec reconstruction d'objet httpx.Response."""
     try:
         from curl_cffi import requests as curl_requests
