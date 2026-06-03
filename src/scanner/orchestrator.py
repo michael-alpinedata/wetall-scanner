@@ -165,7 +165,7 @@ ScanOutput = tuple[str, int, str | None, str]
 #     except Exception as e:
 #         logger.error("Échec de l'envoi de l'e-mail d'alerte : %s", e)
 
-
+# temporairement désactivé pour gagner du temps 
 def _scan_merchant(client: httpx.Client, buy_link: str, headers: dict) -> ScanOutput:
     """Scanne le marchand final avec gestion intelligente des blocages."""
     buy_link = resolve_affiliation_link(buy_link)
@@ -180,50 +180,52 @@ def _scan_merchant(client: httpx.Client, buy_link: str, headers: dict) -> ScanOu
 
     headers["Referer"] = "https://www.google.com/"
 
-    logger.info(f"Scan marchand : {merchant} | URL: {buy_link[:40]}")
-    time.sleep(random.uniform(3, 7))
-    resp = fetch_with_fallback(client, buy_link, headers)
+    # logger.info(f"Scan marchand : {merchant} | URL: {buy_link[:40]}")
+    # time.sleep(random.uniform(3, 7))
+    # resp = fetch_with_fallback(client, buy_link, headers)
 
     # 1. Erreur Réseau / Pare-feu
-    if resp.status_code in (401, 403, 503):
-        logger.warning(f"Blocage {resp.status_code} sur {merchant}.")
-        return (
-            "Vérification bloquée",
-            resp.status_code,
-            str(resp.url),
-            f"ERR_HTTP_BLOCK | {merchant}",
-        )
+    # if resp.status_code in (401, 403, 503):
+    #     logger.warning(f"Blocage {resp.status_code} sur {merchant}.")
+     #    return (
+       #      "Vérification bloquée (403)",
+       #      resp.status_code,
+        #     str(resp.url),
+      #       f"ERR_HTTP_BLOCK | {merchant}",
+    #     )
 
     # 2. Gestion 404
-        logger.warning(f"Blocage {resp.status_code} détecté sur {merchant}. ")
+   # if resp.status_code in (404):
         # logger.warning(f"Blocage {resp.status_code} détecté sur {merchant}. Auto-healing...")
         # fix = _execute_auto_healing(merchant, buy_link, f"HTTP {resp.status_code}")
         # pr = _deploy_pull_request_healing(merchant, fix)
         # _send_email_report(merchant, buy_link, f"HTTP {resp.status_code}", pr)
-        return (
-            "Vérification bloquée (403)",
-            resp.status_code,
-            str(resp.url),
-            "Pare-feu marchand",
-        )
+     #    return (
+      #       "Vérification bloquée (403)",
+      #       resp.status_code,
+       #      str(resp.url),
+     #        "Pare-feu marchand",
+     #    )
 
-    if resp.status_code == 404:
-        return "Lien Brisé (404)", 404, str(resp.url), "ERR_404_SERVER"
+   #  if resp.status_code == 404:
+   #      return "Lien Brisé (404)", 404, str(resp.url), "ERR_404_SERVER"
 
     # 3. Analyse standard (Le parser se chargera de dire si le produit est là ou pas)
-    status, msg = analyze_merchant_status(str(resp.url), resp.text)
+ #    status, msg = analyze_merchant_status(str(resp.url), resp.text)
 
     # Si le status est OK mais qu'on suspecte quand même une page de challenge
     # (parce que le parser a échoué), on marquera ça comme ERR_PARSER
-    if status == "Bouton non trouvé":
-        return (
-            status,
-            resp.status_code,
-            str(resp.url),
-            f"ERR_PARSER_MISSING_ELEMENT | {merchant}",
-        )
+  #   if status == "Bouton non trouvé":
+  #       return (
+  #           status,
+  #           resp.status_code,
+  #           str(resp.url),
+  #           f"ERR_PARSER_MISSING_ELEMENT | {merchant}",
+  #       )
 
-    return status, resp.status_code, str(resp.url), msg
+    # return status, resp.status_code, str(resp.url), msg
+    return 'not yet scanned', '', str(buy_link), 'not yet scanned'
+    
 
 
 def smart_scan(client: httpx.Client, url_wetall: str) -> ScanOutput:
