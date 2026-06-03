@@ -14,6 +14,7 @@ dependencies = [
     "psycopg2-binary>=2.9.12",
     "pygithub>=2.3.0",
     "python-dotenv>=1.2.2",
+    "respx>=0.23.1",
     "uvicorn>=0.48.0",
 ]
 
