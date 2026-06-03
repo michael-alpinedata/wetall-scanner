@@ -224,7 +224,7 @@ def _scan_merchant(client: httpx.Client, buy_link: str, headers: dict) -> ScanOu
   #       )
 
     # return status, resp.status_code, str(resp.url), msg
-    return 'not yet scanned', '', str(buy_link), 'not yet scanned'
+    return 'not yet scanned', 0, str(buy_link), 'not yet scanned'
     
 
 
