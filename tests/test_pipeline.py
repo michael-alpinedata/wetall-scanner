@@ -50,7 +50,9 @@ def _make_product_row(
     return row
 
 
-def _make_db_mock(products: list[MagicMock], cdc_update_rowcount: int = 1) -> tuple[MagicMock, MagicMock]:
+def _make_db_mock(
+    products: list[MagicMock], cdc_update_rowcount: int = 1
+) -> tuple[MagicMock, MagicMock]:
     """
     Construit un mock de conn+cursor psycopg2, supportant les retours pour CDC.
 
@@ -152,7 +154,9 @@ class TestRunPipelineScanExecution:
 
         # Vérifie que la limite a été passée à la requête SQL (le premier execute)
         # On cherche l'appel qui contient "SELECT"
-        select_call = [c for c in cur.execute.call_args_list if "SELECT" in str(c[0][0]).upper()][0]
+        select_call = [
+            c for c in cur.execute.call_args_list if "SELECT" in str(c[0][0]).upper()
+        ][0]
         assert select_call[0][1] == (50,)
         assert mock_scan.call_count == len(FAKE_PRODUCTS)
 

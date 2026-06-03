@@ -205,12 +205,16 @@ class TestAnalyzeMerchantStatusAlltricks:
         assert "Alltricks" in msg
 
     def test_alltricks_plus_en_stock_is_rupture(self, analyzer_impl):
-        status, msg = analyzer_impl(ALLTRICKS_URL, "<html>Plus en stock actuellement.</html>")
+        status, msg = analyzer_impl(
+            ALLTRICKS_URL, "<html>Plus en stock actuellement.</html>"
+        )
         assert status == "Rupture de stock"
         assert "Alltricks" in msg
 
     def test_alltricks_indisponible_is_rupture(self, analyzer_impl):
-        status, msg = analyzer_impl(ALLTRICKS_URL, "<html>Indisponible pour le moment.</html>")
+        status, msg = analyzer_impl(
+            ALLTRICKS_URL, "<html>Indisponible pour le moment.</html>"
+        )
         assert status == "Rupture de stock"
         assert "Alltricks" in msg
 
