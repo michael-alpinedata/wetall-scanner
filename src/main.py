@@ -10,6 +10,7 @@ import argparse
 import logging
 import os
 import sys
+from typing import Literal  # À ajouter en haut de ton fichier
 
 from dotenv import load_dotenv
 from fastapi import BackgroundTasks, FastAPI, Header, HTTPException
@@ -43,27 +44,31 @@ async def healthcheck():
 @app.post("/trigger-scan")
 async def trigger_scan(
     background_tasks: BackgroundTasks,
-    x_secret_key: str = Header(None),
-    mode: str = "standard",  # Ajoute ce paramètre
-    limit: int = 50,  # Ajoute ce paramètre
+    x_secret_key: str = Header(...),  # Utilise Header(...) pour rendre le header obligatoire
+    mode: Literal["discover", "rescan"] = "rescan",  # Valeurs autorisées uniquement
+    limit: int = 50,
 ):
-    if not x_secret_key or x_secret_key != API_SECRET:
+    if x_secret_key != API_SECRET:
         raise HTTPException(status_code=401, detail="Clé invalide")
 
-    # Passe les paramètres à ton pipeline
+    # Log pour tracer le déclenchement
+    logger.info(f"Scan déclenché par API : mode={mode}, limit={limit}")
+
+    # Appel du pipeline
     background_tasks.add_task(run_pipeline, limit=limit, mode=mode)
-    return {"message": f"Scan {mode} lancé pour {limit} produits"}
+
+    return {"message": f"Scan '{mode}' lancé avec succès", "limit": limit}
 
 
 if __name__ == "__main__":
-    # Si des arguments sont passés (ex: --limit), on exécute le pipeline en CLI
     if len(sys.argv) > 1:
         parser = argparse.ArgumentParser(description="Wetall Scanner CLI")
-        parser.add_argument("--limit", type=int, help="Nombre maximum de produits à scanner")
-        parser.add_argument("--mode", type=str, help="standard ou discover")
+        parser.add_argument("--limit", type=int, default=50, help="Nombre de produits")
+        # On définit les choix possibles ici aussi
+        parser.add_argument("--mode", choices=["discover", "rescan"], default="rescan", help="Mode de scan")
         args = parser.parse_args()
 
-        logger.info("Exécution du pipeline via CLI (limit=%s)", args.limit)
+        logger.info(f"Exécution CLI : mode={args.mode}, limit={args.limit}")
         run_pipeline(limit=args.limit, mode=args.mode)
     else:
         # Sinon, on lance le serveur API
