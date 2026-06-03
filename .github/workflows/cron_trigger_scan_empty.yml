@@ -11,8 +11,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Trigger API Scan
+        # curl -X POST "${{ secrets.RENDER_API_URL }}/trigger-scan?mode=discovery&limit=50" \
         run: |
-          curl -X POST "${{ secrets.RENDER_API_URL }}/trigger-scan?mode=discovery&limit=50" \
+          curl -X POST "${{ secrets.RENDER_API_URL }}/trigger-scan?limit=100" \
                -H "X-Secret-Key: ${{ secrets.SCAN_SECRET_KEY }}" \
                -f
 
