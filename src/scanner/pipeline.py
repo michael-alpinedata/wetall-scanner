@@ -63,7 +63,7 @@ def _get_db_connection(db_url: str) -> psycopg2.extensions.connection:
 def _fetch_products(cur, limit, mode="standard"):
     if mode == "discovery":
         # Priorité absolue aux URLs manquantes
-        sql = """SELECT produit_id, url_wetall FROM dim_produit 
+        sql = """SELECT produit_id, url_wetall, is_active FROM dim_produit 
                  WHERE url_marchand_finale IS NULL OR url_marchand_finale = '' 
                  LIMIT %s;"""
     else:
