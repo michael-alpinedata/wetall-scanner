@@ -78,9 +78,14 @@ class DatabaseManager:
                     cur.execute(query, (limit,))
                     logger.info(f"Récupération de {limit} produits (tous vendeurs confondus)")
                 
-                results = cur.fetchall()
+                raw_results = cur.fetchall()
+                # On convertit explicitement chaque RealDictRow en dict standard
+                # Cela règle l'erreur Pylance et garantit la compatibilité JSON
+                results = [dict(row) for row in raw_results]
+                
                 logger.debug(f"{len(results)} produits trouvés en base de données.")
                 return results
+            
         except Exception:
             logger.exception("Erreur lors de la récupération des produits à scanner.")
             return []
