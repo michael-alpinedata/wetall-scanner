@@ -1,5 +1,9 @@
+import logging
 from bs4 import BeautifulSoup
 import abc
+
+# Configuration du logger pour le module des stratégies
+logger = logging.getLogger(__name__)
 
 class BaseScanner(abc.ABC):
     """
@@ -32,6 +36,7 @@ class AmazonScanner(BaseScanner):
 
     def analyze(self, html_content: str) -> tuple[str, str]:
         if not html_content:
+            logger.error("AmazonScanner: Contenu HTML reçu vide ou nul.")
             return "Erreur technique", "Contenu HTML vide ou non reçu"
             
         soup = BeautifulSoup(html_content, 'html.parser')
@@ -43,17 +48,23 @@ class AmazonScanner(BaseScanner):
         buy_now = soup.find(id="buy-now-button")
         
         if add_to_cart or buy_now:
-            return "OK", "Bouton d'achat identifié dans le DOM"
+            msg = "Bouton d'achat identifié dans le DOM"
+            logger.debug(f"AmazonScanner: Produit en stock. {msg} (ID: {'add-to-cart' if add_to_cart else 'buy-now'})")
+            return "OK", msg
             
         # LOGIQUE 2 : Détection explicite de rupture.
         # Si les boutons manquent, on cherche le conteneur de message d'indisponibilité.
         if soup.find(id="outOfStock"):
-            return "Hors Stock", "ID 'outOfStock' présent sur la page"
+            msg = "ID 'outOfStock' présent sur la page"
+            logger.debug(f"AmazonScanner: Produit hors stock confirmé via {msg}.")
+            return "Hors Stock", msg
 
         # LOGIQUE 3 : Cas de sécurité.
         # Si aucun indicateur de stock ou de rupture n'est trouvé, on considère par défaut
         # que le produit est indisponible pour éviter d'envoyer des utilisateurs vers des pages mortes.
-        return "Hors Stock", "Aucun indicateur de stock détecté (Bouton/ID absent)"
+        msg = "Aucun indicateur de stock détecté (Bouton/ID absent)"
+        logger.info(f"AmazonScanner: {msg}. Application de la règle de sécurité (Hors Stock).")
+        return "Hors Stock", msg
 
 class DecathlonScanner(BaseScanner):
     """
@@ -64,6 +75,7 @@ class DecathlonScanner(BaseScanner):
     def analyze(self, html_content: str) -> tuple[str, str]:
         # TODO: Implémenter la détection spécifique (souvent basée sur les classes de boutons)
         # Actuellement en attente de résolution des blocages IP.
+        logger.warning("DecathlonScanner: Tentative d'analyse sur une stratégie non implémentée (en attente de résolution IP).")
         return "Bloqué/Grisé", "Moteur de scan Decathlon en attente d'implémentation"
 
 class GenericScanner(BaseScanner):
@@ -74,4 +86,5 @@ class GenericScanner(BaseScanner):
 
     def analyze(self, html_content: str) -> tuple[str, str]:
         # Logique très simple de repli
+        logger.info("GenericScanner: Utilisation du scanner de secours pour un marchand non supporté.")
         return "À vérifier", "Marchand non supporté spécifiquement"

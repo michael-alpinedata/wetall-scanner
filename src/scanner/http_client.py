@@ -3,6 +3,9 @@ import random
 import logging
 from typing import TypedDict, Optional
 
+# Configuration du logger pour le module réseau
+logger = logging.getLogger(__name__)
+
 class FetchResult(TypedDict):
     """Structure de données retournée par le client HTTP."""
     html: str
@@ -30,6 +33,7 @@ class HTTPClient:
             timeout (int): Temps maximum en secondes pour chaque requête.
         """
         self.timeout = timeout
+        logger.debug(f"HTTPClient initialisé avec un timeout de {timeout}s.")
 
     def fetch(self, url: str) -> FetchResult:
         """
@@ -43,18 +47,23 @@ class HTTPClient:
                          l'URL finale (après redirection) et les erreurs éventuelles.
         """
         # Choix d'un User-Agent aléatoire pour chaque requête
+        ua = random.choice(self.USER_AGENTS)
         headers = {
-            "User-Agent": random.choice(self.USER_AGENTS),
+            "User-Agent": ua,
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
             "Accept-Language": "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7",
             "Referer": "https://www.google.com/",
             "Upgrade-Insecure-Requests": "1"
         }
 
+        logger.debug(f"Tentative de fetch : {url} | UA: {ua[:50]}...")
+
         try:
             # follow_redirects=True est crucial pour obtenir l'URL finale marchande depuis Wetall
             with httpx.Client(timeout=self.timeout, follow_redirects=True) as client:
                 response = client.get(url, headers=headers)
+                
+                logger.info(f"Fetch réussi: {url} | Status: {response.status_code} | Redirect vers: {response.url}")
                 
                 return {
                     "html": response.text,
@@ -64,9 +73,13 @@ class HTTPClient:
                 }
 
         except httpx.ConnectTimeout:
+            logger.warning(f"Timeout de connexion atteint pour l'URL: {url}")
             return {"html": "", "status_code": 0, "url_finale": url, "error": "Timeout de connexion"}
         except httpx.HTTPStatusError as e:
+            logger.error(f"Erreur de statut HTTP pour {url}: {str(e)}")
             return {"html": "", "status_code": e.response.status_code, "url_finale": url, "error": f"Erreur HTTP: {str(e)}"}
         except Exception as e:
             # Capture générique pour éviter de faire planter l'orchestrateur
+            # logger.exception permet d'enregistrer la stacktrace complète dans les logs
+            logger.exception(f"Erreur non gérée lors du fetch de {url}")
             return {"html": "", "status_code": 0, "url_finale": url, "error": f"Exception: {str(e)[:50]}"}
