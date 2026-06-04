@@ -29,42 +29,44 @@ class BaseScanner(abc.ABC):
 
 class AmazonScanner(BaseScanner):
     """
-    Implémentation spécifique pour Amazon.fr.
-    Priorise la détection d'éléments DOM structurels (IDs) plutôt que le texte,
-    car les IDs sont plus stables face aux changements de langue ou de design.
+    Scanner Amazon.fr avec gestion d'états granulaire pour le monitoring.
     """
 
     def analyze(self, html_content: str) -> tuple[str, str]:
-        if not html_content:
-            logger.error("AmazonScanner: Contenu HTML reçu vide ou nul.")
-            return "Erreur technique", "Contenu HTML vide ou non reçu"
+        # 1. Validation technique de la page
+        if not html_content or len(html_content) < 1000:
+            return "ERREUR_TECHNIQUE", "Page vide ou trop courte (BLOCAGE POTENTIEL)"
             
         soup = BeautifulSoup(html_content, 'html.parser')
-        
-        # LOGIQUE 1 : Recherche des boutons d'action d'achat.
-        # Sur Amazon, la présence de ces IDs garantit que le produit est commandable.
-        # 'add-to-cart-button' est le standard, 'buy-now-button' est le bouton d'achat immédiat.
-        add_to_cart = soup.find(id="add-to-cart-button")
-        buy_now = soup.find(id="buy-now-button")
-        
-        if add_to_cart or buy_now:
-            msg = "Bouton d'achat identifié dans le DOM"
-            logger.debug(f"AmazonScanner: Produit en stock. {msg} (ID: {'add-to-cart' if add_to_cart else 'buy-now'})")
-            return "OK", msg
-            
-        # LOGIQUE 2 : Détection explicite de rupture.
-        # Si les boutons manquent, on cherche le conteneur de message d'indisponibilité.
-        if soup.find(id="outOfStock"):
-            msg = "ID 'outOfStock' présent sur la page"
-            logger.debug(f"AmazonScanner: Produit hors stock confirmé via {msg}.")
-            return "Hors Stock", msg
 
-        # LOGIQUE 3 : Cas de sécurité.
-        # Si aucun indicateur de stock ou de rupture n'est trouvé, on considère par défaut
-        # que le produit est indisponible pour éviter d'envoyer des utilisateurs vers des pages mortes.
-        msg = "Aucun indicateur de stock détecté (Bouton/ID absent)"
-        logger.info(f"AmazonScanner: {msg}. Application de la règle de sécurité (Hors Stock).")
-        return "Hors Stock", msg
+        # 2. Détection de page inexistante (404 / Supprimé)
+        # Amazon affiche souvent un message spécifique sur les pages 404
+        # Exemple : "Désolé, nous ne trouvons pas cette page"
+        title = soup.select_one("title")
+        if title and ("404" in title.text or "non trouvée" in title.text.lower()):
+            return "PRODUIT_INEXISTANT", "Page 404 détectée"
+            
+        # Si on ne trouve pas le titre du produit (marqueur critique d'une fiche produit)
+        if not soup.select_one("#productTitle"):
+            return "PRODUIT_INEXISTANT", "Le titre du produit est absent de la page"
+
+        # 3. Détection "EN STOCK"
+        # Priorité absolue : le bouton d'achat.
+        if soup.select_one("#add-to-cart-button") or soup.select_one("#buy-now-button"):
+            return "EN_STOCK", "Produit commandable immédiatement"
+
+        # 4. Détection "HORS STOCK" (Rupture temporaire)
+        # On cherche des marqueurs de rupture dans la BuyBox
+        availability_block = soup.select_one("#availability")
+        if availability_block:
+            text = availability_block.get_text().lower()
+            if any(word in text for word in ["indisponible", "rupture", "unavailable", "currently"]):
+                return "HORS_STOCK", f"Rupture confirmée : {text.strip()[:30]}"
+        
+        # 5. Cas par défaut (Indéterminé)
+        # Si on est sur une fiche produit valide (titre présent), mais sans bouton ni message de rupture,
+        # c'est souvent un produit en "précommande" ou un bug d'affichage.
+        return "INDETERMINE", "Produit identifié mais statut d'achat inconnu"
 
 class DecathlonScanner(BaseScanner):
     """
