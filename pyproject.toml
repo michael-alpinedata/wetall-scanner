@@ -29,6 +29,9 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 log_cli = true
 log_cli_level = "INFO"
+markers = [
+    "smoke: tests rapides de bout en bout (E2E)",
+]
 
 [dependency-groups]
 dev = [
