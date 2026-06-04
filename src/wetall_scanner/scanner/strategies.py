@@ -5,6 +5,11 @@ import abc
 # Configuration du logger pour le module des stratégies
 logger = logging.getLogger(__name__)
 
+# Dans ton fichier scanner/strategies.py ou un fichier de config
+STATUS_EN_STOCK = "EN_STOCK"
+STATUS_HORS_STOCK = "HORS_STOCK"
+STATUS_ERREUR = "ERREUR_TECHNIQUE"
+
 class BaseScanner(abc.ABC):
     """
     Interface de base pour tous les moteurs de scan marchands.
@@ -35,7 +40,7 @@ class AmazonScanner(BaseScanner):
     def analyze(self, html_content: str) -> tuple[str, str]:
         # 1. Validation technique de la page
         if not html_content or len(html_content) < 1000:
-            return "ERREUR_TECHNIQUE", "Page vide ou trop courte (BLOCAGE POTENTIEL)"
+            return STATUS_ERREUR, "Page vide ou trop courte (BLOCAGE POTENTIEL)"
             
         soup = BeautifulSoup(html_content, 'html.parser')
 
@@ -44,16 +49,16 @@ class AmazonScanner(BaseScanner):
         # Exemple : "Désolé, nous ne trouvons pas cette page"
         title = soup.select_one("title")
         if title and ("404" in title.text or "non trouvée" in title.text.lower()):
-            return "PRODUIT_INEXISTANT", "Page 404 détectée"
+            return STATUS_ERREUR, "Page 404 détectée"
             
-        # Si on ne trouve pas le titre du produit (marqueur critique d'une fiche produit)
+        # Si on ne trouve pas le titre du produit (marqueur critique d'une fich,e produit)
         if not soup.select_one("#productTitle"):
-            return "PRODUIT_INEXISTANT", "Le titre du produit est absent de la page"
+            return STATUS_ERREUR, "Le titre du produit est absent de la page"
 
         # 3. Détection "EN STOCK"
         # Priorité absolue : le bouton d'achat.
         if soup.select_one("#add-to-cart-button") or soup.select_one("#buy-now-button"):
-            return "EN_STOCK", "Produit commandable immédiatement"
+            return STATUS_EN_STOCK, "Produit commandable immédiatement"
 
         # 4. Détection "HORS STOCK" (Rupture temporaire)
         # On cherche des marqueurs de rupture dans la BuyBox
@@ -61,7 +66,7 @@ class AmazonScanner(BaseScanner):
         if availability_block:
             text = availability_block.get_text().lower()
             if any(word in text for word in ["indisponible", "rupture", "unavailable", "currently"]):
-                return "HORS_STOCK", f"Rupture confirmée : {text.strip()[:30]}"
+                return STATUS_HORS_STOCK, f"Rupture confirmée : {text.strip()[:30]}"
         
         # 5. Cas par défaut (Indéterminé)
         # Si on est sur une fiche produit valide (titre présent), mais sans bouton ni message de rupture,
