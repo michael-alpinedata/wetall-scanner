@@ -141,7 +141,7 @@ class DatabaseManager:
                 # Enregistrement du fait
                 cur.execute(query_fact, (product_id, now_utc, status_code, http_code, url_finale, debug_info))
                 # Mise à jour de la dimension
-                cur.execute(query_dim, (url_finale, now_utc, json.dumps(new_entry_dict), product_id))
+                cur.execute(query_dim, (url_finale, now_utc, json.dumps([new_entry_dict]), product_id))
             
             logger.info(f"Résultat sauvegardé pour le produit {product_id} (Statut: {status_code})")
         except Exception:

@@ -52,6 +52,13 @@ class TestDatabaseManager:
         history_json = dim_query_args[2] # Le 3ème paramètre est status_history
         
         data = json.loads(history_json)
+        
+        # MODIFICATION SÉCURISÉE :
+        # On vérifie si c'est une liste et qu'elle contient des éléments
+        assert isinstance(data, list), f"Le JSON doit être une liste, reçu : {type(data)}"
+        assert len(data) > 0, "La liste d'historique ne devrait pas être vide"
+        
+        # Vérification du contenu
         assert data[0]["status"] == "Hors Stock"
         assert "timestamp" in data[0]
         assert "Résultat sauvegardé" in caplog.text

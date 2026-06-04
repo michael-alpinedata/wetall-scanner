@@ -18,9 +18,9 @@ class ScannerOrchestrator:
         "decathlon": DecathlonScanner(),
     }
 
-    def __init__(self):
-        self.db = DatabaseManager()
-        self.http = HTTPClient()
+    def __init__(self, db: DatabaseManager, http: HTTPClient):
+        self.db = db              
+        self.http = http
         self.default_strategy = GenericScanner()
         logger.debug("ScannerOrchestrator initialisé avec ses sous-composants.")
 
@@ -49,6 +49,7 @@ class ScannerOrchestrator:
         products = self.db.get_products_to_scan(vendor=vendor, limit=limit)
         logger.info(f"Début du cycle de scan pour {len(products)} produits.")
 
+        results = []
         for product in products:
             p_id = product['produit_id']
             # On privilégie l'URL Wetall car elle gère la redirection vers le marchand
@@ -87,4 +88,8 @@ class ScannerOrchestrator:
             except Exception:
                 logger.exception(f"Erreur critique lors de la sauvegarde du produit {p_id}.")
 
+            results.append({"produit_id": p_id, "status": status_code})
+
+
         logger.info(f"Cycle de scan terminé. {len(products)} produits traités.")
+        return results

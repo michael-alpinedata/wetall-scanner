@@ -1,12 +1,20 @@
 import pytest
+import logging
 from unittest.mock import MagicMock, patch
 from wetall_scanner.scanner.orchestrator import ScannerOrchestrator
+from wetall_scanner.scanner.database import DatabaseManager
+from wetall_scanner.scanner.http_client import HTTPClient
 
 class TestScannerOrchestrator:
     @pytest.fixture
     def orch(self):
+        # On crée des mocks pour les dépendances
+        mock_db = MagicMock(spec=DatabaseManager)
+        mock_http = MagicMock(spec=HTTPClient)
+        
+        # On injecte les mocks dans l'orchestrateur
         with patch("wetall_scanner.scanner.database.psycopg2.connect"):
-            return ScannerOrchestrator()
+            return ScannerOrchestrator(db=mock_db, http=mock_http)
 
     def test_strategy_selection_logic(self, orch):
         """Vérifie que l'orchestrateur choisit le bon 'cerveau' selon le marchand."""
@@ -52,7 +60,6 @@ class TestScannerOrchestrator:
         
         orch.db.save_scan_result = MagicMock()
         
-        import logging
         with caplog.at_level(logging.INFO):
             orch.run_scan(limit=1)
 
