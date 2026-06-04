@@ -49,17 +49,20 @@ class TestScannerOrchestrator:
         orch.db.get_products_to_scan = MagicMock(return_value=[
             {'produit_id': 99, 'url_wetall': 'http://w', 'nom_vendeur': 'amazon'}
         ])
+
+        # Ajout du padding pour dépasser la sécurité des 100 caractères
+        padding = " " * 100 
         
-        # Le HTML contient le bouton Amazon
+        # Le HTML contient le bouton Amazon ET le padding
         orch.http.fetch = MagicMock(return_value={
-            'html': '<div id="add-to-cart-button"></div>', 
-            'status_code': 200, 
-            'url_finale': 'http://amazon.fr/99', 
+            'html': f'<div id="add-to-cart-button"></div>{padding}',
+            'status_code': 200,
+            'url_finale': 'http://amazon.fr/99',
             'error': None
         })
-        
+
         orch.db.save_scan_result = MagicMock()
-        
+
         with caplog.at_level(logging.INFO):
             orch.run_scan(limit=1)
 
