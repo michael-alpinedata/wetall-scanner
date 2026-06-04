@@ -22,7 +22,7 @@ class TestDatabaseManager:
         
         with patch.dict("os.environ", {"DATABASE_URL": "postgresql://test"}):
             db = DatabaseManager()
-            db.get_products_to_scan(vendor="amazon", limit=5)
+            db.get_products_to_monitor(vendor="amazon", limit=5)
             
             assert mock_cur.execute.called
 
@@ -49,7 +49,7 @@ class TestDatabaseManager:
         # 2. Vérification de la structure du log JSONB (2ème appel)
         calls = mock_cur.execute.call_args_list
         dim_query_args = calls[1][0][1] # Arguments du UPDATE dim_produit
-        history_json = dim_query_args[2] # Le 3ème paramètre est status_history
+        history_json = dim_query_args[1] # Le 2ème paramètre est status_history
         
         data = json.loads(history_json)
         

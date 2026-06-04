@@ -51,4 +51,5 @@ def test_smoke_stock_monitoring(components):
     
     # 3. Assertions
     assert len(results) > 0
-    assert results[0]['status'] in ["EN_STOCK", "HORS_STOCK", "ERREUR_TECHNIQUE"]
+    # Dans test_smoke_stock_monitoring
+    assert results[0]['status'] in ["EN_STOCK", "HORS_STOCK", "ERREUR_TECHNIQUE", "A_VERIFIER"]

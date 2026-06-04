@@ -96,4 +96,5 @@ class ScannerOrchestrator:
             )
             results.append({"produit_id": p_id, "status": status_code})
 
+            logger.info(f"Produit {p_id} terminé")
         return results

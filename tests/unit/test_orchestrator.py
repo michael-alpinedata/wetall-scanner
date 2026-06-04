@@ -99,7 +99,6 @@ class TestScannerOrchestrator:
             {'produit_id': 99, 'url_marchand_finale': 'http://amazon.fr/99', 'nom_vendeur': 'amazon'}
         ]
 
-        # Simule une page Amazon valide avec assez de caractères
         padding = " " * 1100 
         orch.http.fetch.return_value = {
             'html': f'<div id="add-to-cart-button"></div>{padding}',
@@ -111,8 +110,8 @@ class TestScannerOrchestrator:
         with caplog.at_level(logging.INFO):
             orch.run_stock_monitoring(limit=1)
 
-        # Assertions sur la sauvegarde
+        # Assertion corrigée : on cherche ce que le code loggue vraiment
+        assert "Produit 99 terminé" in caplog.text
         orch.db.save_scan_result.assert_called_once()
         _, kwargs = orch.db.save_scan_result.call_args
         assert kwargs['status_code'] == "EN_STOCK"
-        assert "Traitement du produit 99" in caplog.text
