@@ -53,12 +53,7 @@ class TestDatabaseManager:
         
         data = json.loads(history_json)
         
-        # MODIFICATION SÉCURISÉE :
-        # On vérifie si c'est une liste et qu'elle contient des éléments
-        assert isinstance(data, list), f"Le JSON doit être une liste, reçu : {type(data)}"
-        assert len(data) > 0, "La liste d'historique ne devrait pas être vide"
-        
-        # Vérification du contenu
-        assert data[0]["status"] == "Hors Stock"
-        assert "timestamp" in data[0]
+        assert isinstance(data, dict), f"Le JSON doit être un dictionnaire, reçu : {type(data)}"
+        assert data["status"] == "Hors Stock", f"Statut attendu 'Hors Stock', reçu : {data['status']}"
+        assert "timestamp" in data, "Le timestamp devrait être présent dans le JSON"
         assert "Résultat sauvegardé" in caplog.text

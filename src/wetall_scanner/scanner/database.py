@@ -111,7 +111,7 @@ class DatabaseManager:
         """
         now_utc = datetime.now(timezone.utc)
         
-        # 1. Préparation : on crée un dictionnaire simple (pas encore une liste JSON)
+        # 1. Préparation : on crée un dictionnaire simple (qui sera transformé en JSONB array dans SQL)
         new_entry_dict = {
             "status": status_code,
             "timestamp": now_utc.isoformat()
@@ -124,8 +124,9 @@ class DatabaseManager:
             VALUES (%s, %s, %s, %s, %s, %s);
         """
         
-        # 2. SQL corrigé : on transforme le dictionnaire en JSONB directement dans SQL
-        # et on le met dans un tableau avant de concaténer
+        # Requête 2 : Table de dimension (Mise à jour avec concaténation JSONB)
+        # On utilise jsonb_build_array() pour que le dictionnaire devienne un élément de liste [dict]
+        # et on l'ajoute au tableau existant avec ||
         query_dim = """
             UPDATE dim_produit 
             SET url_marchand_finale = COALESCE(%s, url_marchand_finale),
@@ -140,12 +141,17 @@ class DatabaseManager:
             with conn.cursor() as cur:
                 # Enregistrement du fait
                 cur.execute(query_fact, (product_id, now_utc, status_code, http_code, url_finale, debug_info))
+                
                 # Mise à jour de la dimension
-                cur.execute(query_dim, (url_finale, now_utc, json.dumps([new_entry_dict]), product_id))
+                # On passe le dict sérialisé en JSON, le SQL se charge de l'envelopper en tableau
+                cur.execute(query_dim, (url_finale, now_utc, json.dumps(new_entry_dict), product_id))
             
+            conn.commit() 
+                        
             logger.info(f"Résultat sauvegardé pour le produit {product_id} (Statut: {status_code})")
         except Exception:
             logger.exception(f"Erreur lors de la sauvegarde du résultat pour le produit {product_id}")
+            raise # On remonte l'exception pour que l'appelant sache que le scan a échoué
         finally:
             # Fermeture garantie de la connexion serverless
             conn.close()

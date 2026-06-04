@@ -19,12 +19,12 @@ def test_integration_save_scan_result(db_manager):
     conn = psycopg2.connect(db_manager.db_url)
     cur = conn.cursor()
     
-    # 1. Setup : Insertion d'un produit de test
+    # 1. Setup : Nettoyage préalable pour éviter UniqueViolation
     test_url = "https://wetall.fr/go/test-product"
-    #delete precedent test deja présent
     cur.execute("DELETE FROM dim_produit WHERE url_wetall = %s", (test_url,))
     conn.commit()
 
+    # Insertion
     cur.execute(
         "INSERT INTO dim_produit (url_wetall, nom_produit, nom_vendeur) VALUES (%s, %s, %s) RETURNING produit_id;",
         (test_url, "Produit Test", "amazon")
@@ -34,7 +34,7 @@ def test_integration_save_scan_result(db_manager):
     assert result is not None, "L'insertion n'a retourné aucun ID"
     product_id = result[0]
     conn.commit()
-
+    
     # 2. Action : Utilisation du vrai manager
     db_manager.save_scan_result(
         product_id=product_id,
@@ -43,16 +43,16 @@ def test_integration_save_scan_result(db_manager):
         url_finale="https://amazon.fr/test",
         debug_info="Test intégration"
     )
-
-    # 3. Vérification : fact_stock_status
+    
+    # 3. Vérification fact_stock_status
     cur.execute("SELECT status_code FROM fact_stock_status WHERE produit_id = %s", (product_id,))
     row = cur.fetchone()
     
     # On vérifie explicitement que row n'est pas None avant d'y accéder
     assert row is not None, "La requête a retourné None"
     assert row[0] == "OK"
-
-# 4. Vérification : Mise à jour JSONB dans dim_produit
+    
+    # 4. Vérification JSONB (La partie critique)
     cur.execute("SELECT status_history FROM dim_produit WHERE produit_id = %s", (product_id,))
     row = cur.fetchone()
     
@@ -61,16 +61,18 @@ def test_integration_save_scan_result(db_manager):
     # Récupération de la donnée
     history = row[0]
     
-    # Si psycopg2 retourne une chaîne (str) au lieu d'un dict/list, on la parse
+    # Si le champ est stocké en JSONB dans Postgres, psycopg2 le convertit souvent déjà en list/dict
     if isinstance(history, str):
         import json
         history = json.loads(history)
     
-    # Maintenant, 'history' est obligatoirement une liste Python
-    assert isinstance(history, list), f"On attendait une liste, reçu : {type(history)}"
-    assert len(history) > 0, "La liste d'historique est vide"
+    # Verification : history est une liste contenant des objets
+    assert isinstance(history, list), "history devrait être une liste"
+    assert len(history) > 0, "La liste devrait contenir au moins un élément"
     
-    # Accès sécurisé au premier élément
-    first_entry = history[0]
-    assert isinstance(first_entry, dict), "L'élément dans la liste n'est pas un dictionnaire"
-    assert first_entry.get("status") == "OK"
+    # Accès au dernier élément (le plus récent)
+    last_entry = history[-1] 
+    assert last_entry.get("status") == "OK", f"Statut attendu OK, reçu : {last_entry.get('status')}"
+    
+    cur.close()
+    conn.close()
