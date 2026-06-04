@@ -1,16 +1,16 @@
 import pytest
 from unittest.mock import MagicMock, patch
-from src.scanner.orchestrator import ScannerOrchestrator
+from wetall_scanner.scanner.orchestrator import ScannerOrchestrator
 
 class TestScannerOrchestrator:
     @pytest.fixture
     def orch(self):
-        with patch("src.scanner.database.psycopg2.connect"):
+        with patch("wetall_scanner.scanner.database.psycopg2.connect"):
             return ScannerOrchestrator()
 
     def test_strategy_selection_logic(self, orch):
         """Vérifie que l'orchestrateur choisit le bon 'cerveau' selon le marchand."""
-        from src.scanner.strategies import AmazonScanner, GenericScanner
+        from wetall_scanner.scanner.strategies import AmazonScanner, GenericScanner
         
         assert isinstance(orch._get_strategy("Amazon"), AmazonScanner)
         assert isinstance(orch._get_strategy("Inconnu"), GenericScanner)

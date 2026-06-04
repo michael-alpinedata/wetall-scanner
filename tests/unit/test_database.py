@@ -2,7 +2,7 @@ import pytest
 import json
 from unittest.mock import MagicMock, patch
 import logging
-from src.scanner.database import DatabaseManager
+from wetall_scanner.scanner.database import DatabaseManager
 
 class TestDatabaseManager:
     @patch("psycopg2.connect")
@@ -26,6 +26,8 @@ class TestDatabaseManager:
         args, _ = mock_cur.execute.call_args
         assert "AND nom_vendeur = %s" in args[0]
         assert args[1] == ("amazon", 5)
+
+
 
     @patch("psycopg2.connect")
     def test_save_scan_result_atomic_operation(self, mock_connect, caplog):

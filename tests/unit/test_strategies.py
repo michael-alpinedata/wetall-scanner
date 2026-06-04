@@ -1,6 +1,6 @@
 import pytest
 import logging
-from src.scanner.strategies import AmazonScanner
+from wetall_scanner.scanner.strategies import AmazonScanner
 
 class TestAmazonScanner:
     """

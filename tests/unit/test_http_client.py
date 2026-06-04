@@ -2,7 +2,7 @@ import pytest
 import httpx
 import respx
 import logging
-from src.scanner.http_client import HTTPClient
+from wetall_scanner.scanner.http_client import HTTPClient
 
 class TestHTTPClient:
     @pytest.fixture
