@@ -111,11 +111,11 @@ class DatabaseManager:
         """
         now_utc = datetime.now(timezone.utc)
         
-        # Préparation du nouvel élément pour le journal d'historique (JSONB)
-        new_history_entry = json.dumps([{
+        # 1. Préparation : on crée un dictionnaire simple (pas encore une liste JSON)
+        new_entry_dict = {
             "status": status_code,
             "timestamp": now_utc.isoformat()
-        }])
+        }
 
         # Requête 1 : Table de faits (Données temporelles brutes)
         query_fact = """
@@ -124,22 +124,24 @@ class DatabaseManager:
             VALUES (%s, %s, %s, %s, %s, %s);
         """
         
-        # Requête 2 : Table de dimension (État actuel de l'objet)
+        # 2. SQL corrigé : on transforme le dictionnaire en JSONB directement dans SQL
+        # et on le met dans un tableau avant de concaténer
         query_dim = """
             UPDATE dim_produit 
             SET url_marchand_finale = COALESCE(%s, url_marchand_finale),
                 status_changed_at = %s,
-                status_history = COALESCE(status_history, '[]'::jsonb) || %s::jsonb
+                status_history = COALESCE(status_history, '[]'::jsonb) || jsonb_build_array(%s::jsonb)
             WHERE produit_id = %s;
         """
 
+        # 3. Exécution
         conn = self._get_connection()
         try:
             with conn.cursor() as cur:
                 # Enregistrement du fait
                 cur.execute(query_fact, (product_id, now_utc, status_code, http_code, url_finale, debug_info))
                 # Mise à jour de la dimension
-                cur.execute(query_dim, (url_finale, now_utc, new_history_entry, product_id))
+                cur.execute(query_dim, (url_finale, now_utc, json.dumps(new_entry_dict), product_id))
             
             logger.info(f"Résultat sauvegardé pour le produit {product_id} (Statut: {status_code})")
         except Exception:
