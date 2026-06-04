@@ -11,6 +11,9 @@ import httpx
 import psycopg2
 from psycopg2.extras import DictCursor
 
+# Import dynamique pour éviter les dépendances circulaires
+# (Laisser ces imports ici ou dans les fonctions si besoin)
+
 logger = logging.getLogger(__name__)
 
 # --- CONSTANTES ---
@@ -19,14 +22,24 @@ _LOG_PROGRESS_EVERY = 10
 STATUS_CRITIQUES_DESACTIVATION = ("Lien Brisé (404)", "Erreur Wetall 404", "Bouton non trouvé")
 
 # --- SQL QUERIES ---
-# AJOUT DE status_changed_at ICI
-_FETCH_PRODUCTS_SQL = """SELECT produit_id, url_wetall, is_active, status_history, 
-status_changed_at, nom_vendeur FROM dim_produit WHERE is_active = TRUE 
-ORDER BY produit_id LIMIT %s;"""
-_INSERT_SCAN_SQL = """INSERT INTO fact_stock_status (produit_id, date_scan, status_code, 
-http_code_marchand, url_marchand_finale, debug_info) VALUES (%s, %s, %s, %s, %s, %s);"""
-_UPDATE_PRODUCT_CDC_SQL_PIPELINE = """UPDATE dim_produit SET status_changed_at = %s, 
-status_history = status_history || %s::jsonb WHERE produit_id = %s;"""
+_FETCH_PRODUCTS_SQL = """
+    SELECT produit_id, url_wetall, is_active, status_history, status_changed_at, nom_vendeur 
+    FROM dim_produit 
+    WHERE is_active = TRUE 
+    ORDER BY produit_id LIMIT %s;
+"""
+
+_INSERT_SCAN_SQL = """
+    INSERT INTO fact_stock_status 
+    (produit_id, date_scan, status_code, http_code_marchand, url_marchand_finale, debug_info) 
+    VALUES (%s, %s, %s, %s, %s, %s);
+"""
+
+_UPDATE_PRODUCT_CDC_SQL_PIPELINE = """
+    UPDATE dim_produit 
+    SET status_changed_at = %s, status_history = status_history || %s::jsonb 
+    WHERE produit_id = %s;
+"""
 
 # --- FONCTIONS UTILITAIRES ---
 
@@ -47,37 +60,28 @@ def _update_dim_product_fields(cur, produit_id, final_url, http_code):
     cur.execute("UPDATE dim_produit SET url_marchand_finale = %s WHERE produit_id = %s;", (final_url, produit_id))
 
 
-# --- LOGIQUE DÉCOUPÉE (C'est là que tu avais des fonctions manquantes) ---
-
-
 def _fetch_products(cur, limit, mode="standard"):
-    """
-    Récupère les produits et normalise les colonnes pour que
-    le reste du pipeline n'ait pas à savoir d'où vient l'URL.
-    """
     if mode == "discovery":
-        # Ajout de nom_vendeur
         sql = """
-            SELECT produit_id, url_wetall, is_active, status_history, status_changed_at, nom_vendeur 
+            SELECT produit_id, url_wetall, is_active, status_history, 
+            status_changed_at, nom_vendeur 
             FROM dim_produit 
             WHERE url_marchand_finale IS NULL OR url_marchand_finale = '' 
             LIMIT %s;
         """
-
     elif mode == "rescan":
-        # Ajout de p.nom_vendeur
         sql = """
             SELECT p.produit_id, p.url_marchand_finale AS url_wetall, p.is_active, 
-            p.status_history, p.status_changed_at, p.nom_vendeur 
+                   p.status_history, p.status_changed_at, p.nom_vendeur 
             FROM dim_produit p
             JOIN fact_stock_status f ON p.produit_id = f.produit_id
             WHERE p.url_marchand_finale LIKE '%%amazon.%%'
-              AND f.http_code_marchand = 200
               AND f.status_code = 'Rupture de stock'
+              AND (f.http_code_marchand = 200 OR f.http_code_marchand IS NULL 
+              OR f.http_code_marchand = 0)
             ORDER BY f.date_scan ASC
             LIMIT %s;
         """
-
     else:
         sql = _FETCH_PRODUCTS_SQL
 
@@ -86,8 +90,6 @@ def _fetch_products(cur, limit, mode="standard"):
 
 
 def _perform_scan(client: httpx.Client, row: dict, mode: str):
-    """Dispatch le scan selon le mode."""
-    # Grâce au 'AS url_wetall' du SQL, l'URL cible est toujours ici :
     target_url = row["url_wetall"]
     merchant_name = row.get("nom_vendeur", "Inconnu")
 
@@ -102,7 +104,6 @@ def _perform_scan(client: httpx.Client, row: dict, mode: str):
 
 
 def _apply_cdc_logic(cur, row, status):
-    """Gère l'historique et la désactivation."""
     produit_id = row["produit_id"]
     current_is_active = row["is_active"]
     status_history = row.get("status_history") or []
@@ -121,32 +122,24 @@ def _apply_cdc_logic(cur, row, status):
 
 
 def _process_scan_result(cur, row, scan_output):
-    """Traite et enregistre le résultat d'un produit après le scan."""
     status, code, final_url, debug_msg = scan_output
     produit_id = row["produit_id"]
     merchant_name = row.get("nom_vendeur", "Inconnu")
 
-    # 1. Insertion dans la table de faits (fact_stock_status)
     _insert_fact_scan_result(cur, produit_id, status, code, final_url, debug_msg)
 
-    # --- LE LOG DE CONFIRMATION ICI ---
     logger.info(
-        f"💾 [DB INSERT] Produit ID {produit_id:4} ({merchant_name}) enregistré avec succès | "
-        f"Statut: {status} | Code HTTP: {code} | URL finale: {str(final_url)[:40]}..."
+        f"💾 [DB INSERT] ID {produit_id:4} ({merchant_name}) | "
+        f"Statut: {status} | HTTP: {code} | Détail: {debug_msg} | URL: {str(final_url)[:40]}..."
     )
-    # ----------------------------------
 
-    # 2. Mise à jour des champs si l'URL finale est présente
     if final_url:
         _update_dim_product_fields(cur, produit_id, final_url, code)
 
-    # 3. Logique CDC (Historique des changements de statuts)
     _apply_cdc_logic(cur, row, status)
 
 
 # --- ENTRY POINT ---
-
-
 def run_pipeline(limit: int = None, mode: str = "discover"):
     limit = limit or DEFAULT_NB_PRODUCT_SCANNED
     db_url = os.environ.get("DATABASE_URL")
@@ -156,7 +149,6 @@ def run_pipeline(limit: int = None, mode: str = "discover"):
         return
 
     conn = _get_db_connection(db_url)
-    # LA LIGNE MAGIQUE : Sauvegarde immédiate après chaque modification
     conn.autocommit = True
     cur = conn.cursor()
 
@@ -176,14 +168,10 @@ def run_pipeline(limit: int = None, mode: str = "discover"):
 
                     if i % _LOG_PROGRESS_EVERY == 0:
                         logger.info("Progression : %s/%s", i, len(products))
-
                 except Exception as e:
-                    # Si un produit plante, on log l'erreur mais on passe au suivant !
                     logger.error(f"❌ Erreur inattendue sur le produit {row['produit_id']} : {e}")
                     continue
-
     finally:
-        # On ferme proprement la connexion à la fin
         cur.close()
         conn.close()
         logger.info("Pipeline terminé et connexions fermées.")
