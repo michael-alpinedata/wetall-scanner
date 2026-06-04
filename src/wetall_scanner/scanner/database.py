@@ -44,115 +44,84 @@ class DatabaseManager:
             logger.exception("Impossible d'établir une connexion à la base de données.")
             raise
 
-    def get_products_to_scan(self, vendor: str | None = None, limit: int = 10) -> list[dict]:
-        """
-        Récupère une liste de produits actifs à analyser.
-
-        Args:
-            vendor (str | None): Nom du vendeur (ex: 'amazon') pour filtrer le scan. 
-                                 Si None, récupère tous les vendeurs actifs.
-            limit (int): Nombre maximum de produits à récupérer.
-
-        Returns:
-            list[dict]: Liste de dictionnaires représentant les lignes de dim_produit.
-        """
-        # Base de la requête SQL
-        base_query = """
-            SELECT produit_id, url_wetall, url_marchand_finale, status_history, nom_vendeur 
+    def get_products_to_discover(self, limit: int = 10) -> list[dict]:
+        """Récupère les produits qui n'ont pas encore d'URL marchande finale."""
+        query = """
+            SELECT produit_id, url_wetall, nom_vendeur 
             FROM dim_produit 
-            WHERE is_active = True
+            WHERE is_active = True 
+            AND url_marchand_finale IS NULL 
+            LIMIT %s;
         """
-        
         conn = self._get_connection()
         try:
-            # RealDictCursor permet d'accéder aux colonnes par leur nom (ex: row['produit_id'])
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                if vendor:
-                    # Filtrage spécifique par marchand
-                    query = base_query + " AND nom_vendeur = %s LIMIT %s;"
-                    cur.execute(query, (vendor, limit))
-                    logger.info(f"Récupération de {limit} produits pour le vendeur: {vendor}")
-                else:
-                    # Scan global
-                    query = base_query + " LIMIT %s;"
-                    cur.execute(query, (limit,))
-                    logger.info(f"Récupération de {limit} produits (tous vendeurs confondus)")
-                
-                raw_results = cur.fetchall()
-                # On convertit explicitement chaque RealDictRow en dict standard
-                # Cela règle l'erreur Pylance et garantit la compatibilité JSON
-                results = [dict(row) for row in raw_results]
-                
-                logger.debug(f"{len(results)} produits trouvés en base de données.")
-                return results
-            
-        except Exception:
-            logger.exception("Erreur lors de la récupération des produits à scanner.")
-            return []
+                cur.execute(query, (limit,))
+                return [dict(row) for row in cur.fetchall()]
         finally:
-            # Fermeture systématique pour libérer les ressources Neon
             conn.close()
-            logger.debug("Connexion Neon fermée.")
+
+    def update_product_merchant_url(self, product_id: int, final_url: str):
+        """Enregistre l'URL finale découverte pour passer le produit en monitoring."""
+        query = "UPDATE dim_produit SET url_marchand_finale = %s WHERE produit_id = %s;"
+        conn = self._get_connection()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(query, (final_url, product_id))
+            logger.info(f"Discovery : URL fixée pour le produit {product_id}")
+        finally:
+            conn.close()
+
+    # --- WORKFLOW 2 : MONITORING (Vérifier le Stock) ---
+
+    def get_products_to_monitor(self, vendor: str | None = None, limit: int = 10) -> list[dict]:
+        """Récupère les produits prêts pour le scan de stock (URL finale connue)."""
+        query = """
+            SELECT produit_id, url_marchand_finale, nom_vendeur 
+            FROM dim_produit 
+            WHERE is_active = True 
+            AND url_marchand_finale IS NOT NULL
+        """
+        params = []
+        if vendor:
+            query += " AND nom_vendeur = %s"
+            params.append(vendor)
+        
+        query += " LIMIT %s;"
+        params.append(limit)
+
+        conn = self._get_connection()
+        try:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(query, tuple(params))
+                return [dict(row) for row in cur.fetchall()]
+        finally:
+            conn.close()
 
     def save_scan_result(self, product_id: int, status_code: str, http_code: int, url_finale: str, debug_info: str):
-        """
-        Enregistre les résultats d'un scan de manière atomique.
-        
-        Effectue deux opérations :
-        1. Insertion dans 'fact_stock_status' : Historique complet pour le dashboard.
-        2. Mise à jour de 'dim_produit' : État actuel et journal d'historique JSONB.
-
-        Args:
-            product_id (int): Identifiant unique du produit.
-            status_code (str): Libellé du statut (ex: 'OK', 'Hors Stock').
-            http_code (int): Code de retour HTTP du marchand.
-            url_finale (str): URL de destination après redirections.
-            debug_info (str): Message technique pour le diagnostic.
-        """
+        """Historise le résultat du scan de stock (Monitoring)."""
         now_utc = datetime.now(timezone.utc)
-        
-        # 1. Préparation : on crée un dictionnaire simple (qui sera transformé en JSONB array dans SQL)
-        new_entry_dict = {
-            "status": status_code,
-            "timestamp": now_utc.isoformat()
-        }
+        new_entry_dict = {"status": status_code, "timestamp": now_utc.isoformat()}
 
-        # Requête 1 : Table de faits (Données temporelles brutes)
+        # On insère dans la table de faits pour l'historique
         query_fact = """
             INSERT INTO fact_stock_status 
             (produit_id, date_scan, status_code, http_code_marchand, url_marchand_finale, debug_info) 
             VALUES (%s, %s, %s, %s, %s, %s);
         """
-        
-        # Requête 2 : Table de dimension (Mise à jour avec concaténation JSONB)
-        # On utilise jsonb_build_array() pour que le dictionnaire devienne un élément de liste [dict]
-        # et on l'ajoute au tableau existant avec ||
+        # On met à jour la dimension (SCD Type 1 + historique JSONB)
         query_dim = """
             UPDATE dim_produit 
-            SET url_marchand_finale = COALESCE(%s, url_marchand_finale),
-                status_changed_at = %s,
+            SET status_changed_at = %s,
                 status_history = COALESCE(status_history, '[]'::jsonb) || jsonb_build_array(%s::jsonb)
             WHERE produit_id = %s;
         """
 
-        # 3. Exécution
         conn = self._get_connection()
         try:
             with conn.cursor() as cur:
-                # Enregistrement du fait
                 cur.execute(query_fact, (product_id, now_utc, status_code, http_code, url_finale, debug_info))
-                
-                # Mise à jour de la dimension
-                # On passe le dict sérialisé en JSON, le SQL se charge de l'envelopper en tableau
-                cur.execute(query_dim, (url_finale, now_utc, json.dumps(new_entry_dict), product_id))
-            
-            conn.commit() 
-                        
-            logger.info(f"Résultat sauvegardé pour le produit {product_id} (Statut: {status_code})")
-        except Exception:
-            logger.exception(f"Erreur lors de la sauvegarde du résultat pour le produit {product_id}")
-            raise # On remonte l'exception pour que l'appelant sache que le scan a échoué
+                cur.execute(query_dim, (now_utc, json.dumps(new_entry_dict), product_id))
+            logger.info(f"Monitoring : Statut {status_code} sauvegardé pour {product_id}")
         finally:
-            # Fermeture garantie de la connexion serverless
             conn.close()
-            logger.debug("Connexion Neon fermée après sauvegarde.")
