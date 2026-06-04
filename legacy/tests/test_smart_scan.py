@@ -36,7 +36,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-from tests.conftest import (
+from legacy.tests.conftest import (
     HTML_NO_BUY_LINK,
     HTML_RUPTURE_WETALL,
     HTML_VARIATIONS_FORM,

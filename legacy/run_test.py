@@ -9,8 +9,8 @@ import httpx
 from bs4 import BeautifulSoup
 
 # Import de tes modules locaux
-from src.scanner.http_client import build_headers
-from src.scanner.parser import get_buy_link_from_wetall
+from legacy.src.scanner.http_client import build_headers
+from legacy.src.scanner.parser import get_buy_link_from_wetall
 
 # --- CONFIGURATION DU LOGGING MAXIMAL ---
 logging.basicConfig(

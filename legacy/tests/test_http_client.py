@@ -30,7 +30,7 @@ HEADERS = {"User-Agent": "test-agent", "Accept": "text/html"}
 
 def _make_client_returning(status_code: int, url: str = GENERIC_URL) -> MagicMock:
     """Crée un client httpx mock dont .get() retourne une réponse avec le code donné."""
-    from tests.conftest import make_response
+    from legacy.tests.conftest import make_response
 
     client = MagicMock()
     client.get.return_value = make_response(status_code=status_code, url=url)

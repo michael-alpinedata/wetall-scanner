@@ -39,7 +39,7 @@ from __future__ import annotations
 import os
 from unittest.mock import MagicMock, patch
 
-from tests.conftest import (
+from legacy.tests.conftest import (
     SITEMAP_XML_EMPTY,
     SITEMAP_XML_NO_PRODUCTS,
     SITEMAP_XML_VALID,

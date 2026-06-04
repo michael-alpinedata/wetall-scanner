@@ -165,7 +165,7 @@ SITEMAP_XML_EMPTY = """<?xml version="1.0" encoding="UTF-8"?>
 
 @pytest.fixture
 def parser_impl():
-    from src.scanner.parser import get_buy_link_from_wetall, normalize_amazon_url
+    from legacy.src.scanner.parser import get_buy_link_from_wetall, normalize_amazon_url
 
     return {
         "get_buy_link": get_buy_link_from_wetall,
@@ -175,14 +175,14 @@ def parser_impl():
 
 @pytest.fixture
 def analyzer_impl():
-    from src.scanner.analyzer import analyze_merchant_status
+    from legacy.src.scanner.analyzer import analyze_merchant_status
 
     return analyze_merchant_status
 
 
 @pytest.fixture
 def http_client_impl():
-    from src.scanner.http_client import fetch_with_fallback
+    from legacy.src.scanner.http_client import fetch_with_fallback
 
     return {
         "fetch_with_fallback": fetch_with_fallback,
@@ -192,7 +192,7 @@ def http_client_impl():
 
 @pytest.fixture
 def smart_scan_impl():
-    from src.scanner.orchestrator import smart_scan
+    from legacy.src.scanner.orchestrator import smart_scan
 
     return {
         "smart_scan": smart_scan,
@@ -203,7 +203,7 @@ def smart_scan_impl():
 
 @pytest.fixture
 def pipeline_impl():
-    from src.scanner.pipeline import run_pipeline
+    from legacy.src.scanner.pipeline import run_pipeline
 
     return {
         "run_pipeline": run_pipeline,
@@ -216,7 +216,7 @@ def pipeline_impl():
 
 @pytest.fixture
 def extract_url_impl():
-    from src.extract_url.sync import _url_to_product_name, sync_sitemap_to_db
+    from legacy.src.extract_url.sync import _url_to_product_name, sync_sitemap_to_db
 
     return {
         "sync_sitemap_to_db": sync_sitemap_to_db,

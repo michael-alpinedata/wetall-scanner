@@ -1,6 +1,6 @@
 from unittest.mock import MagicMock
 
-from src.scanner.pipeline import _fetch_products
+from legacy.src.scanner.pipeline import _fetch_products
 
 
 def test_fetch_products_queries():

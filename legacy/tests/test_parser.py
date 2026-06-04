@@ -27,7 +27,7 @@ Couverture visée :
 
 from __future__ import annotations
 
-from tests.conftest import (
+from legacy.tests.conftest import (
     HTML_BUTTON_AND_OUT_LINK,
     HTML_BUTTON_FORM_NO_ACTION,
     HTML_BUTTON_NO_PARENT_FORM,

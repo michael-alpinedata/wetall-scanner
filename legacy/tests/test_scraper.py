@@ -1,8 +1,8 @@
 import pytest
 import respx
 import httpx
-from src.scanner.orchestrator import smart_scan
-from src.scanner.parser import get_buy_link_from_wetall
+from legacy.src.scanner.orchestrator import smart_scan
+from legacy.src.scanner.parser import get_buy_link_from_wetall
 from bs4 import BeautifulSoup
 
 
@@ -20,7 +20,7 @@ def test_extract_amazon_link():
 
 def test_resolve_affiliation_link():
     """Vérifie la résolution du lien LinkSynergy."""
-    from src.scanner.http_client import resolve_affiliation_link
+    from legacy.src.scanner.http_client import resolve_affiliation_link
 
     ls_url = "https://click.linksynergy.com/deeplink?murl=https%3A%2F%2Fwww.decathlon.fr%2Fproduit-test"
     resolved = resolve_affiliation_link(ls_url)

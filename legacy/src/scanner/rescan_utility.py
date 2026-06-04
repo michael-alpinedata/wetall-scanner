@@ -58,11 +58,11 @@ def _perform_scan(client: httpx.Client, row: dict, mode: str):
     merchant_name = row.get("nom_vendeur", "Inconnu")
 
     if mode == "rescan":
-        from src.scanner.orchestrator import direct_merchant_scan
+        from legacy.src.scanner.orchestrator import direct_merchant_scan
 
         return direct_merchant_scan(client, target_url, merchant_name=merchant_name)
     else:
-        from src.scanner.orchestrator import smart_scan
+        from legacy.src.scanner.orchestrator import smart_scan
 
         return smart_scan(client, target_url, merchant_name=merchant_name)
 

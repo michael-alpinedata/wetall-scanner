@@ -40,7 +40,7 @@ Couverture visée :
 
 from __future__ import annotations
 
-from tests.conftest import (
+from legacy.tests.conftest import (
     HTML_AMAZON_404_DISGUISED,
     HTML_AMAZON_OK,
     HTML_AMAZON_OUT_OF_STOCK,

@@ -15,7 +15,7 @@ from typing import Literal  # À ajouter en haut de ton fichier
 from dotenv import load_dotenv
 from fastapi import BackgroundTasks, FastAPI, Header, HTTPException
 
-from src.scanner import run_pipeline
+from legacy.src.scanner import run_pipeline
 
 load_dotenv()
 

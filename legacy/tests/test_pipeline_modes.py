@@ -1,6 +1,6 @@
 from unittest.mock import MagicMock, patch
 
-from src.scanner.pipeline import _perform_scan
+from legacy.src.scanner.pipeline import _perform_scan
 
 
 def test_perform_scan_dispatch():

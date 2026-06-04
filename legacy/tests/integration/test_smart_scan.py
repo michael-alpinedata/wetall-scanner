@@ -1,7 +1,7 @@
 import respx
 import httpx
 import pytest
-from src.scanner.orchestrator import smart_scan
+from legacy.src.scanner.orchestrator import smart_scan
 
 
 @respx.mock

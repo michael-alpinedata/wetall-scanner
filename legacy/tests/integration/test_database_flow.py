@@ -2,7 +2,7 @@ import sqlite3
 from unittest.mock import MagicMock
 
 import pytest
-from src.scanner.rescan_utility import update_product_status  # Adapte l'import
+from legacy.src.scanner.rescan_utility import update_product_status  # Adapte l'import
 
 
 @pytest.fixture
