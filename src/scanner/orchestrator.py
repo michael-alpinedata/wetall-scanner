@@ -3,15 +3,11 @@ Orchestrateur du scan d'un produit Wetall avec support Auto-Healing IA.
 """
 
 import logging
-import os
 import random
-import smtplib
 import time
-from email.message import EmailMessage
 
 import httpx
 from bs4 import BeautifulSoup
-from github import Github
 
 from .analyzer import analyze_merchant_status
 from .http_client import build_headers, fetch_with_fallback, resolve_affiliation_link
@@ -24,11 +20,12 @@ ScanOutput = tuple[str, int, str | None, str]
 
 
 # def is_bot_blocked(html_content: str, is_amazon: bool = False) -> bool:
-#     """BUGGY (unused, left for possible future evolution): 
-#     - gros risque de faux positif blocked alors que ras 
+#     """BUGGY (unused, left for possible future evolution):
+#     - gros risque de faux positif blocked alors que ras
 #     (mot clé 'captcha' détecté sur page saine et produit avec ou sans stock)
 #     - Détecte les blocages et logue le coupable si le niveau de log est DEBUG."""
-#     # On ne scanne que les 2000 premiers caractères pour éviter les faux positifs du footer
+#     # On ne scanne que les 2000 premiers caractères pour éviter les faux positifs
+# du footer
 #     context = html_content[:2000].lower()
 
 #     amazon_block_signatures = [
@@ -38,7 +35,8 @@ ScanOutput = tuple[str, int, str | None, str]
 #     ]
 
 #     # On définit les signatures à vérifier
-#     # attention gros risque de faux positif blocked alors que ras (mot clé captcha détecté)
+#     # attention gros risque de faux positif blocked alors que ras (mot clé captcha
+#  détecté)
 #     signatures = amazon_block_signatures if is_amazon else ["captcha", "robot"]
 
 #     for sig in signatures:
@@ -58,11 +56,14 @@ ScanOutput = tuple[str, int, str | None, str]
 #     if not api_key:
 #         return "# Clé API manquante."
 
-#     # Tronquage agressif du HTML pour le LLM (800 chars suffisent pour diagnostiquer le WAF)
+#     # Tronquage agressif du HTML pour le LLM (800 chars suffisent pour diagnostiquer
+# le WAF)
 #     short_html = html_content[:800]
-#     prompt = f"Analyse le blocage sur {merchant_name}. URL: {url}. Logs: {debug_info}. HTML: {short_html}. Propose un correctif headers."
+#     prompt = f"Analyse le blocage sur {merchant_name}. URL: {url}. Logs: {debug_info}.
+#  HTML: {short_html}. Propose un correctif headers."
 
-#     url_api = "https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent"
+#     url_api = "https://generativelanguage.googleapis.com/v1/models/
+# gemini-2.5-flash:generateContent"
 #     try:
 #         # Timeout augmenté à 45s pour la résilience
 #         with httpx.Client(timeout=45.0) as client:
@@ -81,9 +82,11 @@ ScanOutput = tuple[str, int, str | None, str]
 #         return f"# Échec diagnostic IA : {e}"
 
 
-# def _deploy_pull_request_healing(merchant_name: str, code_proposal: str) -> str | None:
+# def _deploy_pull_request_healing(merchant_name: str, code_proposal: str
+# ) -> str | None:
 #     """Crée une branche et soumet une Pull Request via PyGithub."""
-#     token, repo_slug = os.environ.get("GH_TOKEN"), os.environ.get("GITHUB_REPOSITORY")
+#     token, repo_slug = os.environ.get("GH_TOKEN"), os.environ.get(
+# "GITHUB_REPOSITORY")
 #     if not (token and repo_slug):
 #         return None
 #     if not (token and repo_slug):
@@ -110,7 +113,8 @@ ScanOutput = tuple[str, int, str | None, str]
 #             file_content.sha,
 #             branch=branch,
 #         )
-#         pr_body = f"""### 🤖 Auto-Healing Report for {merchant_name}\n\n```python\n{code_proposal}\n```"""
+#         pr_body = f"""### 🤖 Auto-Healing Report for
+#  {merchant_name}\n\n```python\n{code_proposal}\n```"""
 #         pr = repo.create_pull(
 #             title=f"🤖 [Auto-Healing] {merchant_name}",
 #             body=pr_body,
@@ -150,12 +154,13 @@ ScanOutput = tuple[str, int, str | None, str]
 
 
 #     content = f"""Rapport d'incident de scraping automatisé.
-    
+
 # Marchand : {merchant_name}
 # URL Source : {url}
 # Détails d'erreur : {debug_msg}
 
-# Action corrective IA : {"Pull Request ouverte avec succès : " + pr_url if pr_url else "Échec de l'auto-healing Git."}
+# Action corrective IA : {"Pull Request ouverte avec succès : " + pr_url if pr_url else
+#  "Échec de l'auto-healing Git."}
 # """
 #     msg.set_content(content)
 #     try:
@@ -165,8 +170,8 @@ ScanOutput = tuple[str, int, str | None, str]
 #     except Exception as e:
 #         logger.error("Échec de l'envoi de l'e-mail d'alerte : %s", e)
 
-# temporairement désactivé pour gagner du temps 
-def _scan_merchant(client: httpx.Client, buy_link: str, headers: dict) -> ScanOutput:
+
+def _scan_merchant(client: httpx.Client, buy_link: str, headers: dict, merchant_name: str = "Inconnu") -> ScanOutput:
     """Scanne le marchand final avec gestion intelligente des blocages."""
     buy_link = resolve_affiliation_link(buy_link)
     if not buy_link or "://" not in buy_link:
@@ -175,60 +180,38 @@ def _scan_merchant(client: httpx.Client, buy_link: str, headers: dict) -> ScanOu
         else:
             raise ValueError("Lien Marchand Invalide")
 
-    # Nom du marchand pour les logs et debug
-    merchant = buy_link.split("//")[-1].split("/")[0].replace("www.", "")
-
     headers["Referer"] = "https://www.google.com/"
 
-    # logger.info(f"Scan marchand : {merchant} | URL: {buy_link[:40]}")
-    # time.sleep(random.uniform(3, 7))
-    # resp = fetch_with_fallback(client, buy_link, headers)
+    # PLUS DE BRICOLAGE : On utilise directement merchant_name passé en paramètre
+    logger.info(f"Scan marchand : {merchant_name} | URL: {buy_link[:40]}")
+    time.sleep(random.uniform(3, 7))
+    resp = fetch_with_fallback(client, buy_link, headers)
 
-    # 1. Erreur Réseau / Pare-feu
-    # if resp.status_code in (401, 403, 503):
-    #     logger.warning(f"Blocage {resp.status_code} sur {merchant}.")
-     #    return (
-       #      "Vérification bloquée (403)",
-       #      resp.status_code,
-        #     str(resp.url),
-      #       f"ERR_HTTP_BLOCK | {merchant}",
-    #     )
+    # Gestion 404
+    if resp.status_code == 404:
+        return "Lien Brisé (404)", 404, str(resp.url), "ERR_404_SERVER"
 
-    # 2. Gestion 404
-   # if resp.status_code in (404):
-        # logger.warning(f"Blocage {resp.status_code} détecté sur {merchant}. Auto-healing...")
-        # fix = _execute_auto_healing(merchant, buy_link, f"HTTP {resp.status_code}")
-        # pr = _deploy_pull_request_healing(merchant, fix)
-        # _send_email_report(merchant, buy_link, f"HTTP {resp.status_code}", pr)
-     #    return (
-      #       "Vérification bloquée (403)",
-      #       resp.status_code,
-       #      str(resp.url),
-     #        "Pare-feu marchand",
-     #    )
+    # Analyse standard
+    status, msg = analyze_merchant_status(str(resp.url), resp.text)
 
-   #  if resp.status_code == 404:
-   #      return "Lien Brisé (404)", 404, str(resp.url), "ERR_404_SERVER"
+    if status == "Bouton non trouvé":
+        return (
+            status,
+            resp.status_code,
+            str(resp.url),
+            f"ERR_PARSER_MISSING_ELEMENT | {merchant_name}",
+        )
 
-    # 3. Analyse standard (Le parser se chargera de dire si le produit est là ou pas)
- #    status, msg = analyze_merchant_status(str(resp.url), resp.text)
-
-    # Si le status est OK mais qu'on suspecte quand même une page de challenge
-    # (parce que le parser a échoué), on marquera ça comme ERR_PARSER
-  #   if status == "Bouton non trouvé":
-  #       return (
-  #           status,
-  #           resp.status_code,
-  #           str(resp.url),
-  #           f"ERR_PARSER_MISSING_ELEMENT | {merchant}",
-  #       )
-
-    # return status, resp.status_code, str(resp.url), msg
-    return 'not yet scanned', 0, str(buy_link), 'not yet scanned'
-    
+    return status, resp.status_code, str(resp.url), msg
 
 
-def smart_scan(client: httpx.Client, url_wetall: str) -> ScanOutput:
+def direct_merchant_scan(client: httpx.Client, buy_link: str, merchant_name: str = "Inconnu") -> ScanOutput:
+    """Scanne directement le lien marchand final sans passer par Wetall."""
+    headers = build_headers()
+    return _scan_merchant(client, buy_link, headers, merchant_name=merchant_name)
+
+
+def smart_scan(client: httpx.Client, url_wetall: str, merchant_name: str = "Inconnu") -> ScanOutput:
     """Orchestre le scan complet d'un produit Wetall."""
     headers = build_headers()
     try:
@@ -242,7 +225,8 @@ def smart_scan(client: httpx.Client, url_wetall: str) -> ScanOutput:
             return link_result
         buy_link = link_result
 
-        return _scan_merchant(client, buy_link, headers)
+        # Transmission du nom du marchand
+        return _scan_merchant(client, buy_link, headers, merchant_name=merchant_name)
     except Exception as exc:
         return "Erreur technique", 0, None, f"Exception: {str(exc)[:50]}"
 

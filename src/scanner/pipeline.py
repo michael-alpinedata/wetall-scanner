@@ -5,230 +5,185 @@ Pipeline de traitement par batch (nuit).
 import json
 import logging
 import os
-import random
-import time
 from datetime import datetime, timezone
 
 import httpx
 import psycopg2
 from psycopg2.extras import DictCursor
 
-from .orchestrator import smart_scan
-
 logger = logging.getLogger(__name__)
 
-# Nombre de produits traités par exécution
-DEFAULT_NB_PRODUCT_SCANNED: int = int(os.environ.get("NB_PRODUCT_SCANNED", 50))
-
-_FETCH_PRODUCTS_SQL = """
-    SELECT p.produit_id, p.url_wetall, p.is_active, p.status_history
-    FROM dim_produit p
-    LEFT JOIN (
-        SELECT produit_id, MAX(date_scan) AS last_scan_date
-        FROM fact_stock_status
-        GROUP BY produit_id
-    ) f ON p.produit_id = f.produit_id
-    WHERE p.is_active = TRUE
-    ORDER BY f.last_scan_date ASC NULLS FIRST
-    LIMIT %s;
-"""
-
-_INSERT_SCAN_SQL = """
-    INSERT INTO fact_stock_status
-        (produit_id, date_scan, status_code, http_code_marchand,
-         url_marchand_finale, debug_info)
-    VALUES (%s, %s, %s, %s, %s, %s);
-"""
-
-_UPDATE_PRODUCT_CDC_SQL_PIPELINE = """
-    UPDATE dim_produit
-    SET
-        status_changed_at = %s,
-        status_history = status_history || %s::jsonb
-    WHERE
-        produit_id = %s;
-"""
-#         -- is_active = %s,
-
+# --- CONSTANTES ---
+DEFAULT_NB_PRODUCT_SCANNED = int(os.environ.get("NB_PRODUCT_SCANNED", 50))
 _LOG_PROGRESS_EVERY = 10
+STATUS_CRITIQUES_DESACTIVATION = ("Lien Brisé (404)", "Erreur Wetall 404", "Bouton non trouvé")
+
+# --- SQL QUERIES ---
+# AJOUT DE status_changed_at ICI
+_FETCH_PRODUCTS_SQL = """SELECT produit_id, url_wetall, is_active, status_history, 
+status_changed_at, nom_vendeur FROM dim_produit WHERE is_active = TRUE 
+ORDER BY produit_id LIMIT %s;"""
+_INSERT_SCAN_SQL = """INSERT INTO fact_stock_status (produit_id, date_scan, status_code, 
+http_code_marchand, url_marchand_finale, debug_info) VALUES (%s, %s, %s, %s, %s, %s);"""
+_UPDATE_PRODUCT_CDC_SQL_PIPELINE = """UPDATE dim_produit SET status_changed_at = %s, 
+status_history = status_history || %s::jsonb WHERE produit_id = %s;"""
+
+# --- FONCTIONS UTILITAIRES ---
 
 
-def _get_db_connection(db_url: str) -> psycopg2.extensions.connection:
-    conn = psycopg2.connect(db_url, cursor_factory=DictCursor)
-    conn.autocommit = True
-    return conn
+def _get_db_connection(db_url):
+    return psycopg2.connect(db_url, cursor_factory=DictCursor)
 
 
-# Dans src/scanner/pipeline.py
+def _insert_fact_scan_result(cur, produit_id, status, http_code, url_finale, debug_msg):
+    cur.execute(_INSERT_SCAN_SQL, (produit_id, datetime.now(timezone.utc), status, http_code, url_finale, debug_msg))
+
+
+def _update_dim_product_status_history(cur, produit_id, status_changed_at, new_history_entry_jsonb):
+    cur.execute(_UPDATE_PRODUCT_CDC_SQL_PIPELINE, (status_changed_at, new_history_entry_jsonb, produit_id))
+
+
+def _update_dim_product_fields(cur, produit_id, final_url, http_code):
+    cur.execute("UPDATE dim_produit SET url_marchand_finale = %s WHERE produit_id = %s;", (final_url, produit_id))
+
+
+# --- LOGIQUE DÉCOUPÉE (C'est là que tu avais des fonctions manquantes) ---
+
+
 def _fetch_products(cur, limit, mode="standard"):
+    """
+    Récupère les produits et normalise les colonnes pour que
+    le reste du pipeline n'ait pas à savoir d'où vient l'URL.
+    """
     if mode == "discovery":
-        # Priorité absolue aux URLs manquantes
-        sql = """SELECT produit_id, url_wetall, is_active, status_history FROM dim_produit 
-                 WHERE url_marchand_finale IS NULL OR url_marchand_finale = '' 
-                 LIMIT %s;"""
+        # Ajout de nom_vendeur
+        sql = """
+            SELECT produit_id, url_wetall, is_active, status_history, status_changed_at, nom_vendeur 
+            FROM dim_produit 
+            WHERE url_marchand_finale IS NULL OR url_marchand_finale = '' 
+            LIMIT %s;
+        """
+
+    elif mode == "rescan":
+        # Ajout de p.nom_vendeur
+        sql = """
+            SELECT p.produit_id, p.url_marchand_finale AS url_wetall, p.is_active, 
+            p.status_history, p.status_changed_at, p.nom_vendeur 
+            FROM dim_produit p
+            JOIN fact_stock_status f ON p.produit_id = f.produit_id
+            WHERE p.url_marchand_finale LIKE '%%amazon.%%'
+              AND f.http_code_marchand = 200
+              AND f.status_code = 'Rupture de stock'
+            ORDER BY f.date_scan ASC
+            LIMIT %s;
+        """
+
     else:
-        # Ton SQL actuel de batch de nuit
         sql = _FETCH_PRODUCTS_SQL
+
     cur.execute(sql, (limit,))
     return cur.fetchall()
 
 
-def _insert_fact_scan_result(
-    cur: psycopg2.extensions.cursor,
-    produit_id: int,
-    status: str,
-    http_code: int,
-    url_finale: str | None,
-    debug_msg: str,
-) -> None:
-    cur.execute(
-        _INSERT_SCAN_SQL,
-        (
-            produit_id,
-            datetime.now(timezone.utc),
-            status,
-            http_code,
-            url_finale,
-            debug_msg,
-        ),
+def _perform_scan(client: httpx.Client, row: dict, mode: str):
+    """Dispatch le scan selon le mode."""
+    # Grâce au 'AS url_wetall' du SQL, l'URL cible est toujours ici :
+    target_url = row["url_wetall"]
+    merchant_name = row.get("nom_vendeur", "Inconnu")
+
+    if mode == "rescan":
+        from .orchestrator import direct_merchant_scan
+
+        return direct_merchant_scan(client, target_url, merchant_name=merchant_name)
+    else:
+        from .orchestrator import smart_scan
+
+        return smart_scan(client, target_url, merchant_name=merchant_name)
+
+
+def _apply_cdc_logic(cur, row, status):
+    """Gère l'historique et la désactivation."""
+    produit_id = row["produit_id"]
+    current_is_active = row["is_active"]
+    status_history = row.get("status_history") or []
+
+    now_utc = datetime.now(timezone.utc)
+    new_status_entry = {"status": status, "timestamp": now_utc.isoformat()}
+    last_known_status = status_history[-1].get("status") if status_history else None
+    new_is_active = status not in STATUS_CRITIQUES_DESACTIVATION
+
+    new_status_at = None if new_is_active else (now_utc if current_is_active else row.get("status_changed_at"))
+
+    if (status != last_known_status) or (new_is_active != current_is_active):
+        _update_dim_product_status_history(cur, produit_id, new_status_at, json.dumps(new_status_entry))
+        return True
+    return False
+
+
+def _process_scan_result(cur, row, scan_output):
+    """Traite et enregistre le résultat d'un produit après le scan."""
+    status, code, final_url, debug_msg = scan_output
+    produit_id = row["produit_id"]
+    merchant_name = row.get("nom_vendeur", "Inconnu")
+
+    # 1. Insertion dans la table de faits (fact_stock_status)
+    _insert_fact_scan_result(cur, produit_id, status, code, final_url, debug_msg)
+
+    # --- LE LOG DE CONFIRMATION ICI ---
+    logger.info(
+        f"💾 [DB INSERT] Produit ID {produit_id:4} ({merchant_name}) enregistré avec succès | "
+        f"Statut: {status} | Code HTTP: {code} | URL finale: {str(final_url)[:40]}..."
     )
+    # ----------------------------------
+
+    # 2. Mise à jour des champs si l'URL finale est présente
+    if final_url:
+        _update_dim_product_fields(cur, produit_id, final_url, code)
+
+    # 3. Logique CDC (Historique des changements de statuts)
+    _apply_cdc_logic(cur, row, status)
 
 
-def _update_dim_product_status_history(
-    cur: psycopg2.extensions.cursor,
-    produit_id: int,
-    # is_active: bool,
-    status_changed_at: datetime | None,
-    new_history_entry_jsonb: str,
-) -> None:
-    cur.execute(
-        _UPDATE_PRODUCT_CDC_SQL_PIPELINE,
-        (
-            # is_active,
-            status_changed_at,
-            new_history_entry_jsonb,
-            produit_id,
-        ),
-    )
+# --- ENTRY POINT ---
 
 
-def _update_dim_product_fields(cur, produit_id, final_url, http_code):
-    """Met à jour l'url_marchand_finale."""
-    sql = """
-        UPDATE dim_produit
-        SET url_marchand_finale = %s
-        WHERE produit_id = %s;
-    """
-    cur.execute(sql, (final_url, produit_id))
-
-
-def run_pipeline(limit: int = None, mode: str = "standard"):
-    if limit is None:
-        limit = DEFAULT_NB_PRODUCT_SCANNED
-
+def run_pipeline(limit: int = None, mode: str = "discover"):
+    limit = limit or DEFAULT_NB_PRODUCT_SCANNED
     db_url = os.environ.get("DATABASE_URL")
+
     if not db_url:
-        logger.error("La variable d'environnement DATABASE_URL est manquante.")
+        logger.error("DATABASE_URL manquante.")
         return
 
-    try:
-        conn = _get_db_connection(db_url)
-        cur = conn.cursor()
-        products = _fetch_products(cur, limit, mode=mode)
+    conn = _get_db_connection(db_url)
+    # LA LIGNE MAGIQUE : Sauvegarde immédiate après chaque modification
+    conn.autocommit = True
+    cur = conn.cursor()
 
+    try:
+        products = _fetch_products(cur, limit, mode=mode)
         if not products:
-            logger.info("Aucun produit à scanner.")
-            cur.close()
-            conn.close()
+            logger.info("Rien à scanner.")
             return
 
-        nb_status_changes = 0
-        nb_errors = 0
-
-        # TODO - pour l'instant, un scan de wetall ne doit pas desactiver le produit
-        # dans le catalogue, seul un scan de la sitemap le peut (avec extract_url)
-        # on pourrait faire des statuts dans la dim_produits 
-        # 'is_link_broken', 'is_out_of_stock' 
-        # (en SCD 2, avec suivi des dates de changement de statut)
-        STATUS_CRITIQUES_DESACTIVATION = (
-            # "Lien Brisé (404)",
-            # "Erreur Wetall 404",
-            # "Bouton non trouvé",
-        )
+        logger.info(f"Démarrage {mode} : {len(products)} produits.")
 
         with httpx.Client(follow_redirects=True, timeout=60.0) as client:
             for i, row in enumerate(products, start=1):
-                produit_id = row["produit_id"]
-                url_wetall = row["url_wetall"]
-                current_is_active_in_db = row["is_active"]
-                status_history_in_db = row["status_history"]
+                try:
+                    result = _perform_scan(client, row, mode)
+                    _process_scan_result(cur, row, result)
 
-                if i % _LOG_PROGRESS_EVERY == 0:
-                    logger.info(
-                        "Progression : %s/%s fiches traitées.", i, len(products)
-                    )
+                    if i % _LOG_PROGRESS_EVERY == 0:
+                        logger.info("Progression : %s/%s", i, len(products))
 
-                # 1. Scan
-                status, code, final_url, debug_msg = smart_scan(client, url_wetall)
+                except Exception as e:
+                    # Si un produit plante, on log l'erreur mais on passe au suivant !
+                    logger.error(f"❌ Erreur inattendue sur le produit {row['produit_id']} : {e}")
+                    continue
 
-                # 1. Insertion systématique (Trace d'audit pour le debug)
-                _insert_fact_scan_result(cur, produit_id, status, code, final_url, debug_msg)
-
-                # 2. Gestion des erreurs techniques (Pas de mise à jour produit)
-                if status in ("Erreur technique", "Fail Wetall") or "Erreur" in status:
-                    nb_errors += 1
-                    logger.warning("Smart scan a renvoyé un statut d'erreur : '%s'", status)
-
-                # 2. Mise à jour TECHNIQUE (URL et Code HTTP) - NE TOUCHE PAS À IS_ACTIVE
-                if final_url:
-                    _update_dim_product_fields(cur, produit_id, final_url, code)
-
-                # 3. CDC Logic (Gestion du statut is_active)
-                now_utc = datetime.now(timezone.utc)
-                new_status_entry = {"status": status, "timestamp": now_utc.isoformat()}
-                new_status_entry_jsonb = json.dumps(new_status_entry)
-
-                last_known_status = None
-                if status_history_in_db and isinstance(status_history_in_db, list):
-                    last_known_status = status_history_in_db[-1].get("status")
-
-                #  on ne touche pas à is_active
-                new_is_active = status not in STATUS_CRITIQUES_DESACTIVATION
-
-                if new_is_active:
-                    new_status_at = None
-                else:
-                    new_status_at = (
-                        now_utc
-                        if current_is_active_in_db
-                        else row.get("status_changed_at")
-                    )
-
-                # TODO: Mise à jour si changement réel
-                # A réécrire pour MAJ d'autre chose que is_active (is_link_broken,
-                # is out_of_stock)
-                # ID : pour l'instant met juste à jour le status_entry
-                if (status != last_known_status) or (
-                    new_is_active != current_is_active_in_db
-                ):
-                    nb_status_changes += 1
-                    _update_dim_product_status_history(
-                        cur,
-                        produit_id,
-                        new_status_at,
-                        new_status_entry_jsonb,
-                    )
-
-                time.sleep(random.uniform(5, 12))
-
+    finally:
+        # On ferme proprement la connexion à la fin
         cur.close()
         conn.close()
-        logger.info(
-            "RÉSUMÉ BATCH : %s traités, %s changements, %s erreurs.",
-            len(products),
-            nb_status_changes,
-            nb_errors,
-        )
-
-    except Exception as exc:
-        logger.error("Échec critique du pipeline : %s", exc, exc_info=True)
+        logger.info("Pipeline terminé et connexions fermées.")

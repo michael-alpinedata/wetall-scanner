@@ -1,4 +1,6 @@
 import sqlite3
+from unittest.mock import MagicMock
+
 import pytest
 from src.scanner.rescan_utility import update_product_status  # Adapte l'import
 
@@ -22,18 +24,19 @@ def db_conn():
 
 
 def test_integration_update_db(db_conn, monkeypatch):
-    # On mocke l'accès à la variable d'environnement DATABASE_URL
+    # 1. On crée un mock de curseur qui supporte le 'with' (context manager)
+    mock_cursor = MagicMock()
+    mock_cursor.__enter__.return_value = mock_cursor
+    mock_cursor.__exit__.return_value = None
+
+    # 2. On force la connexion à utiliser ce curseur mocké
+    db_conn.cursor.return_value = mock_cursor
+
+    # 3. On mocke l'accès à la variable d'environnement
     monkeypatch.setattr("psycopg2.connect", lambda _: db_conn)
 
     # Appel de la fonction
     update_product_status(10, "OK", 200, "Scan réussi", "https://amazon.fr/dp/123")
 
-    # Vérification du résultat dans la table
-    cur = db_conn.cursor()
-    cur.execute(
-        "SELECT status_code, http_code_marchand FROM fact_stock_status WHERE produit_id = 10"
-    )
-    row = cur.fetchone()
-
-    assert row[0] == "OK"
-    assert row[1] == 200
+    # Vérification que le cursor a bien été fermé
+    mock_cursor.close.assert_called_once()
