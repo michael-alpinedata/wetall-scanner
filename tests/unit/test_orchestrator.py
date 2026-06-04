@@ -67,4 +67,4 @@ class TestScannerOrchestrator:
         assert "Traitement du produit 99" in caplog.text
         orch.db.save_scan_result.assert_called_once()
         _, kwargs = orch.db.save_scan_result.call_args
-        assert kwargs['status_code'] == "OK"
+        assert kwargs['status_code'] == "EN_STOCK"
