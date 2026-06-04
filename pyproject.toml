@@ -1,40 +1,46 @@
 [project]
 name = "wetall-scanner"
 version = "0.1.0"
-description = "Pipeline de monitoring des liens affiliés Wetall.fr"
-readme = "README.md"
-requires-python = ">=3.12"
+description = "Scanner de disponibilité de produits marchands"
+authors = [
+    { name = "Michael Garcia", email = "michael@alpinedata.fr" }
+]
 dependencies = [
-    "beautifulsoup4>=4.14.3",
-    "brotli>=1.2.0",
-    "curl-cffi>=0.15.0",
+    "httpx>=0.25.0",
+    "beautifulsoup4>=4.12.0",
+    "psycopg2-binary>=2.9.9",
+    "python-dotenv>=1.0.0",
     "fastapi>=0.136.3",
-    "httpx>=0.28.1",
-    "lxml>=6.1.1",
-    "psycopg2-binary>=2.9.12",
-    "pygithub>=2.3.0",
-    "python-dotenv>=1.2.2",
-    "respx>=0.23.1",
-    "typing>=3.10.0.0",
-    "uvicorn>=0.48.0",
+    "uvicorn>=0.49.0",
 ]
+readme = "README.md"
+requires-python = ">=3.11"
 
-[dependency-groups]
-dev = [
-    "pre-commit>=4.6.0",
-    "pytest>=8.0.0",
-    "pytest-mock>=3.14.0",
-    "ruff>=0.15.15",
-]
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
-[tool.ruff]
-# Applique le style compatible avec Black
-line-length = 120
-src = ["src"]
+[tool.hatch.build.targets.wheel]
+packages = ["src/wetall_scanner"]
 
-[tool.ruff.lint]
-select = ["E", "F", "I"] # E=errors, F=flakes, I=isort (tri imports)
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["."]
+python_files = ["test_*.py"]
+log_cli = true
+log_cli_level = "INFO"
+
+[dependency-groups]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "respx>=0.20.0",
+]
+
+[tool.ruff]
+# Indique à Ruff de formater comme Black
+line-length = 88
+
+[tool.ruff.format]
+# Active le formatage compatible Black
+quote-style = "double"
