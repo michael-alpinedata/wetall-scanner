@@ -10,7 +10,12 @@ class ScanResult(Enum):
     NO_BUTTON = ("NO_BUTTON", "Aucun bouton trouvé", False, False)
 
     # --- Infrastructure / Blocage ---
-    BLOQUE_CAPTCHA = ("BLOQUE_BOT", "Blocage Amazon détecté (CAPTCHA)", True, True)
+    BLOQUE_CAPTCHA = (
+        "BLOQUE_BOT",
+        "Blocage antibot détecté (captcha ou autre)",
+        True,
+        True,
+    )
     BLOCK_IP = ("BLOQUE_IP", "Blocage IP suspecté (Rate limiting)", True, True)
     TIMEOUT = ("TIMEOUT", "Le délai d'attente a été dépassé", True, True)
     ERREUR_RESEAU = ("ERREUR_RESEAU", "Erreur de connexion réseau", True, True)

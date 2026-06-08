@@ -1,6 +1,7 @@
 import pytest
 import psycopg2
 from wetall_scanner.scanner.database import DatabaseManager
+from wetall_scanner.scanner.constants import ScanResult
 
 
 # Fixture pour nettoyer la base après les tests
@@ -40,7 +41,7 @@ def test_integration_save_scan_result(db_manager):
     # 2. Action : Utilisation du vrai manager
     db_manager.save_scan_result(
         product_id=product_id,
-        status_code="OK",
+        status_code=ScanResult.EN_STOCK.code,
         http_code=200,
         url_finale="https://amazon.fr/test",
         debug_info="Test intégration",
@@ -54,7 +55,7 @@ def test_integration_save_scan_result(db_manager):
 
     # On vérifie explicitement que row n'est pas None avant d'y accéder
     assert row is not None, "La requête a retourné None"
-    assert row[0] == "OK"
+    assert row[0] == ScanResult.EN_STOCK.code
 
     # 4. Vérification JSONB (La partie critique)
     cur.execute(
@@ -79,7 +80,7 @@ def test_integration_save_scan_result(db_manager):
 
     # Accès au dernier élément (le plus récent)
     last_entry = history[-1]
-    assert last_entry.get("status") == "OK", (
+    assert last_entry.get("status") == ScanResult.EN_STOCK.code, (
         f"Statut attendu OK, reçu : {last_entry.get('status')}"
     )
 

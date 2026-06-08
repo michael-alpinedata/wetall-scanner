@@ -33,3 +33,12 @@ pas n'importe quelle url? ou add produit test dans bdd puis remove (reprednre di
 - reprise
 - on se fait blocker par amazon, on va réagir et uriliser les anciennes straégies 
 qui marchent (curl_cffi par défaut)
+
+all afternoon :
+- improve page type detection and classification 
+- fix tests accordingly
+- use standardized messages
+
+evening:
+- refactor to new architecture with gemini pro
+

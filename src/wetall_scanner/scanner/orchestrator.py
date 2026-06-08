@@ -4,7 +4,7 @@ import logging
 from .database import DatabaseManager
 from .http_client import HTTPClient
 from .extractor import WetallExtractor
-from .factory import ScannerFactory
+from .strategies.factory import ScannerFactory
 
 # Configuration du logger pour le module orchestrator
 logger = logging.getLogger(__name__)

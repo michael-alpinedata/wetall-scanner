@@ -3,6 +3,7 @@ import json
 from unittest.mock import patch
 import logging
 from wetall_scanner.scanner.database import DatabaseManager
+from wetall_scanner.scanner.constants import ScanResult
 
 
 class TestDatabaseManager:
@@ -37,7 +38,7 @@ class TestDatabaseManager:
             with caplog.at_level(logging.INFO):
                 db.save_scan_result(
                     product_id=10,
-                    status_code="Hors Stock",
+                    status_code=ScanResult.HORS_STOCK.code,
                     http_code=200,
                     url_finale="http://final.com",
                     debug_info="Test log",
@@ -56,8 +57,8 @@ class TestDatabaseManager:
         assert isinstance(data, dict), (
             f"Le JSON doit être un dictionnaire, reçu : {type(data)}"
         )
-        assert data["status"] == "Hors Stock", (
-            f"Statut attendu 'Hors Stock', reçu : {data['status']}"
+        assert data["status"] == ScanResult.HORS_STOCK.code, (
+            f"Statut attendu 'HORS_STOCK', reçu : {data['status']}"
         )
         assert "timestamp" in data, "Le timestamp devrait être présent dans le JSON"
         assert "sauvegardé pour 10" in caplog.text

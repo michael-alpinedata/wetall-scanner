@@ -1,4 +1,8 @@
-from .strategies import AmazonScanner, DecathlonScanner, GenericScanner, BaseScanner
+# Imports depuis les nouveaux fichiers éclatés
+from .base import BaseScanner
+from .amazon import AmazonScanner
+from .decathlon import DecathlonScanner
+from .generic import GenericScanner
 
 
 class ScannerFactory:
@@ -7,7 +11,7 @@ class ScannerFactory:
     _registry = {
         "amazon": AmazonScanner(),
         "decathlon": DecathlonScanner(),
-        # Ajoute tes futurs marchands ici
+        # Demain : "fnac": FnacScanner()
     }
 
     @classmethod

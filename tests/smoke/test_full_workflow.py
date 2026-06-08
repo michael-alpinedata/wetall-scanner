@@ -4,6 +4,7 @@ from wetall_scanner.scanner.database import DatabaseManager
 from wetall_scanner.scanner.http_client import HTTPClient
 from wetall_scanner.scanner.orchestrator import ScannerOrchestrator
 from wetall_scanner.scanner.extractor import WetallExtractor  # Ajout de l'extracteur
+from wetall_scanner.scanner.constants import ScanResult
 
 
 @pytest.fixture
@@ -86,13 +87,13 @@ def test_smoke_link_discovery(components, test_product):
             "Amazon_En_Stock",
             "https://www.amazon.fr/dp/2959790502?__mk_fr_FR=%C3%85M%C3%85%C5%BD%C3%95%C3%91&crid=2CZ51GHHAFIFJ&dib=eyJ2IjoiMSJ9.gEt5v4BHL22XJgOqHaVWYSclichqCO0tHTNTNQp03bE.A7tqbC478Uy_2SyEpudWOM7cBy6YqSZI0QeTz6y8x7Y&dib_tag=se&keywords=yoann+Genier&qid=1759395302&sprefix=yoann+genier,aps,77&sr=8-1&linkCode=sl1&tag=spdy-21&linkId=01ca3e7b3adf1d626bf9725e2394e3dd&language=fr_FR&ref_=as_li_ss_tl",  # Un bouquin classique souvent édité/disponible
             "Amazon",
-            "EN_STOCK",
+            ScanResult.EN_STOCK.code,
         ),
         (
             "Amazon_Hors_Stock",
             "https://www.amazon.fr/Drop-Avery-Square-Heeled-Sandal/dp/B09JZY3GGH?pf_rd_i=20956511031&pf_rd_m=A1X6FK5RDHNB96&pf_rd_p=093ceae9-38cc-4022-ac70-1c4144554700&pf_rd_r=F85MV9AA6WMXN3P8MS2B&pf_rd_s=merchandised-search-4&pf_rd_t=101&qid=1669277209&refinements=p_n_deal_type%3A26902975031%2Cp_n_size_browse-vebin%3A14675964031%257C14675965031%257C14675966031%257C14675967031%257C14675968031%257C14675969031%257C14675970031%257C14675971031%257C14675972031&rnid=1902697031&s=apparel&sr=1-25&th=1&linkCode=sl1&tag=wetall-21&linkId=9782fbf0c6f4cf71035ab880806bc970&language=fr_FR&ref_=as_li_ss_tl&psc=1",  # Un vieux produit obsolète ou introuvable depuis des années
             "Amazon",
-            "HORS_STOCK",
+            ScanResult.HORS_STOCK.code,
         ),
         (
             "Decathlon_Antibot",
@@ -103,7 +104,7 @@ def test_smoke_link_discovery(components, test_product):
             # en stock le 08/06/2026 (mas surement bloqué antibot):
             "https://www.decathlon.fr/p/chaussures-de-basketball-homme-femme-ss500-noir/144026/m8790079",  # URL Decathlon standard qui va se heurter à DataDome/Cloudflare
             "Decathlon",
-            "ERREUR_TECHNIQUE",  # Ou "A_VERIFIER" selon ton choix de normalisation pour les codes 403/407
+            ScanResult.BLOQUE_CAPTCHA.code,
         ),
     ],
 )
