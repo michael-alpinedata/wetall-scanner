@@ -43,3 +43,5 @@ cython_debug/
 .DS_Store
 .ipynb_checkpoints/
 .aider*
+
+debug_dumps/*
