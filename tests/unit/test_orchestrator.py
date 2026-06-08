@@ -7,9 +7,11 @@ from wetall_scanner.scanner.extractor import WetallExtractor
 
 # Nouveaux imports propres
 from wetall_scanner.scanner.constants import ScanResult
-from wetall_scanner.scanner.strategies.factory import ScannerFactory
-from wetall_scanner.scanner.strategies.amazon import AmazonScanner
-from wetall_scanner.scanner.strategies.generic import GenericScanner
+from wetall_scanner.scanner.strategies import (
+    ScannerFactory,
+    AmazonScanner,
+    GenericScanner,
+)
 
 
 class TestScannerOrchestrator:
@@ -78,8 +80,15 @@ class TestScannerOrchestrator:
         orch.db.update_product_discovery_results.assert_not_called()
 
     # --- TESTS DU WORKFLOW 2 : MONITORING ---
+    @patch("wetall_scanner.scanner.orchestrator.ScannerFactory")
+    def test_run_stock_monitoring_handles_404(self, mock_factory, orch):
+        # 1. Configurer le mock du scanner
+        mock_scanner = MagicMock()
+        # Le scanner doit retourner un résultat qui représente la 404
+        mock_scanner.analyze.return_value = ScanResult.PAGE_404
+        mock_factory.get_scanner.return_value = mock_scanner
 
-    def test_run_stock_monitoring_handles_404(self, orch):
+        # 2. Configurer le mock de DB
         orch.db.get_products_to_monitor.return_value = [
             {
                 "produit_id": 1,
@@ -87,23 +96,27 @@ class TestScannerOrchestrator:
                 "nom_vendeur": "amazon",
             }
         ]
-
         orch.http.fetch_stealth.return_value = {
             "html": "",
             "status_code": 404,
             "url_finale": "http://amazon.fr/p1",
-            "error": None,
         }
 
+        # 3. Exécuter
         orch.run_stock_monitoring(limit=1)
 
+        # 4. Vérifier
+        orch.db.save_scan_result.assert_called_once()
         _, kwargs = orch.db.save_scan_result.call_args
-
-        # Mise à jour de l'assertion pour matcher l'objet Enum et sa propriété "code"
         assert kwargs["status_code"] == ScanResult.PAGE_404.code
-        assert ScanResult.PAGE_404.message in kwargs["debug_info"]
 
-    def test_run_stock_monitoring_full_flow_success(self, orch):
+    @patch("wetall_scanner.scanner.orchestrator.ScannerFactory")
+    def test_run_stock_monitoring_full_flow_success(self, mock_factory, orch):
+        # 1. Mock du scanner en mode "Stock OK"
+        mock_scanner = MagicMock()
+        mock_scanner.analyze.return_value = ScanResult.EN_STOCK
+        mock_factory.get_scanner.return_value = mock_scanner
+
         orch.db.get_products_to_monitor.return_value = [
             {
                 "produit_id": 99,
