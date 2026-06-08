@@ -1,6 +1,6 @@
 # tests/smoke/test_real_amazon.py
-import pytest
 import httpx
+import pytest
 
 
 @pytest.mark.smoke

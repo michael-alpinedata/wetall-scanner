@@ -8,8 +8,10 @@ pour les cibles anti-bot (Decathlon, Alltricks, ASOS, Nike).
 
 import logging
 import random
+from urllib.parse import parse_qs, unquote, urlparse
 
 import httpx
+from curl_cffi import requests as curl_requests
 
 logger = logging.getLogger(__name__)
 
@@ -50,10 +52,6 @@ def _is_hard_target(url: str) -> bool:
     """Vérifie si l'URL appartient à un domaine nécessitant curl_cffi en priorité."""
     url_lower = url.lower()
     return any(target in url_lower for target in HARD_TARGETS)
-
-
-from urllib.parse import urlparse, parse_qs, unquote
-from curl_cffi import requests as curl_requests
 
 
 def resolve_affiliation_link(url: str) -> str:
@@ -104,37 +102,27 @@ def resolve_affiliation_link(url: str) -> str:
     return url
 
 
-def fetch_with_fallback(
-    client: httpx.Client, url: str, headers: dict[str, str]
-) -> httpx.Response:
+def fetch_with_fallback(client: httpx.Client, url: str, headers: dict[str, str]) -> httpx.Response:
     """
     Exécute la requête de scraping. Utilise directement curl_cffi pour les cibles sensibles
     afin de protéger l'IP, sinon utilise httpx avec un fallback curl_cffi en cas d'erreur.
     """
     if _is_hard_target(url):
-        logger.info(
-            f"Cible sensible détectée ({url[:40]}). Utilisation directe de curl_cffi."
-        )
+        logger.info(f"Cible sensible détectée ({url[:40]}). Utilisation directe de curl_cffi.")
         try:
             return _fetch_with_curl(url, headers)
         except Exception as e:
-            logger.warning(
-                f"Échec curl_cffi sur cible sensible {url[:40]}. Fallback vers httpx. Erreur: {e}"
-            )
+            logger.warning(f"Échec curl_cffi sur cible sensible {url[:40]}. Fallback vers httpx. Erreur: {e}")
             return client.get(url, headers=headers)
 
     resp = client.get(url, headers=headers)
     if resp.status_code in (401, 403):
-        logger.warning(
-            f"Blocage {resp.status_code} sur {url[:40]}. Tentative de fallback curl_cffi."
-        )
+        logger.warning(f"Blocage {resp.status_code} sur {url[:40]}. Tentative de fallback curl_cffi.")
         return _fetch_with_curl(url, headers, fallback_resp=resp)
     return resp
 
 
-def _fetch_with_curl(
-    url: str, headers: dict, fallback_resp: httpx.Response | None = None
-) -> httpx.Response:
+def _fetch_with_curl(url: str, headers: dict, fallback_resp: httpx.Response | None = None) -> httpx.Response:
     """Encapsulation de l'appel curl_cffi avec reconstruction d'objet httpx.Response."""
     try:
         from curl_cffi import requests as curl_requests

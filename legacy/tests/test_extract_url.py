@@ -225,9 +225,7 @@ class TestSyncSitemapToDbPersistence:
         mock_conn.autocommit = True
 
         # Configure mock_cur.fetchall to return existing products (or empty list by default)
-        mock_cur.fetchall.return_value = (
-            initial_db_rows if initial_db_rows is not None else []
-        )
+        mock_cur.fetchall.return_value = initial_db_rows if initial_db_rows is not None else []
 
         # Configure mock_cur.executemany to return specific rowcounts
         if mock_executemany_returns:
@@ -256,18 +254,12 @@ class TestSyncSitemapToDbPersistence:
             extract_url_impl["sync_sitemap_to_db"]()
 
         # Check that executemany was called exactly once for INSERT
-        insert_calls = [
-            c
-            for c in cur.executemany.call_args_list
-            if "INSERT" in str(c[0][0]).upper()
-        ]
+        insert_calls = [c for c in cur.executemany.call_args_list if "INSERT" in str(c[0][0]).upper()]
         assert len(insert_calls) == 1  # Expecting one batch insert call
 
         # The second argument to executemany is the list of tuples for insertion
         # Each tuple is (url_wetall, nom_produit, is_active, status_history_jsonb)
-        inserted_products_data = insert_calls[0][0][
-            1
-        ]  # Get the data from the first executemany call arguments
+        inserted_products_data = insert_calls[0][0][1]  # Get the data from the first executemany call arguments
         inserted_urls = [prod_data[0] for prod_data in inserted_products_data]
 
         assert set(inserted_urls) == set(EXPECTED_PRODUCT_URLS)

@@ -92,9 +92,7 @@ def _check_asos(url: str, html: str) -> ScanResult | None:
 
 
 def _check_amazon_success(url: str, html: str) -> ScanResult | None:
-    if "amazon" in url and (
-        'id="add-to-cart-button"' in html or "ajouter au panier" in html.lower()
-    ):
+    if "amazon" in url and ('id="add-to-cart-button"' in html or "ajouter au panier" in html.lower()):
         return "OK", "Amazon : Stock confirmé"
     return None
 
@@ -115,7 +113,6 @@ _DEFAULT_RESULT: ScanResult = ("OK", "Scan réussi")
 
 def analyze_merchant_status(url: str, html: str) -> ScanResult:
     url_lower = url.lower()
-    html_lower = html.lower()
 
     # 1. Protection : Si l'URL est celle de Wetall, on ignore les règles marchands
     # car le HTML contient souvent des signatures qui induisent en erreur.

@@ -6,6 +6,7 @@ Responsabilité unique : transformer du HTML brut en données structurées
 """
 
 import re
+
 from bs4 import BeautifulSoup
 
 

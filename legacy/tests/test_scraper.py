@@ -1,9 +1,9 @@
+import httpx
 import pytest
 import respx
-import httpx
+from bs4 import BeautifulSoup
 from legacy.src.scanner.orchestrator import smart_scan
 from legacy.src.scanner.parser import get_buy_link_from_wetall
-from bs4 import BeautifulSoup
 
 
 def test_extract_amazon_link():
@@ -56,16 +56,12 @@ def test_wetall_no_buy_button():
 def test_smart_scan_success():
     # On simule la réponse de Wetall
     respx.get("https://www.wetall.fr/produit/test").mock(
-        return_value=httpx.Response(
-            200, text='<a href="https://amazon.fr/dp/123" class="button">Commander</a>'
-        )
+        return_value=httpx.Response(200, text='<a href="https://amazon.fr/dp/123" class="button">Commander</a>')
     )
 
     # On simule la réponse d'Amazon
     respx.get("https://amazon.fr/dp/123").mock(
-        return_value=httpx.Response(
-            200, text="<html><body><div id='add-to-cart'>Ajouté</div></body></html>"
-        )
+        return_value=httpx.Response(200, text="<html><body><div id='add-to-cart'>Ajouté</div></body></html>")
     )
 
     with httpx.Client() as client:

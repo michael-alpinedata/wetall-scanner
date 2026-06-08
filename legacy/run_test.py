@@ -51,14 +51,10 @@ def run_diagnostic(url_wetall: str):
             logger.info("Étape 2 : Vérification du décodage du texte...")
             html_text = resp.text
             if not html_text or len(html_text.strip()) == 0:
-                logger.error(
-                    "ALERTE : Le texte décodé est VIDE. Problème d'encodage probable (Brotli/Gzip) !"
-                )
+                logger.error("ALERTE : Le texte décodé est VIDE. Problème d'encodage probable (Brotli/Gzip) !")
                 return
 
-            logger.debug(
-                f"Aperçu du HTML décodé (100 premiers chars) : {html_text[:100]}"
-            )
+            logger.debug(f"Aperçu du HTML décodé (100 premiers chars) : {html_text[:100]}")
 
             # --- VÉRIFICATION DU PARSER ---
             logger.info("Étape 3 : Analyse par BeautifulSoup...")
@@ -72,20 +68,14 @@ def run_diagnostic(url_wetall: str):
                 logger.info(f"✅ BOUTON TROUVÉ : {btn}")
                 form = btn.find_parent("form")
                 if form:
-                    logger.info(
-                        f"✅ FORMULAIRE PARENT TROUVÉ. Action : {form.get('action')}"
-                    )
+                    logger.info(f"✅ FORMULAIRE PARENT TROUVÉ. Action : {form.get('action')}")
                 else:
                     logger.warning("❌ Bouton trouvé mais SANS formulaire parent.")
             else:
-                logger.error(
-                    "❌ BOUTON NON TROUVÉ avec la classe 'single_add_to_cart_button'"
-                )
+                logger.error("❌ BOUTON NON TROUVÉ avec la classe 'single_add_to_cart_button'")
                 # On cherche tous les boutons pour voir si la classe a changé
                 all_btns = soup.find_all("button")
-                logger.debug(
-                    f"Liste des classes de tous les boutons trouvés : {[b.get('class') for b in all_btns]}"
-                )
+                logger.debug(f"Liste des classes de tous les boutons trouvés : {[b.get('class') for b in all_btns]}")
 
             # Exécution de la fonction officielle
             link, msg = get_buy_link_from_wetall(soup)
