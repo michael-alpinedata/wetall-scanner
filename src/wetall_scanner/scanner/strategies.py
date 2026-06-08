@@ -1,4 +1,4 @@
-import abc
+from abc import ABC, abstractmethod
 import logging
 from bs4 import BeautifulSoup
 
@@ -15,19 +15,24 @@ from .constants import (
     ScanStatus,
 )
 
+
 # Configuration du logger pour le module des stratégies
 logger = logging.getLogger(__name__)
 
 
-class BaseScanner(abc.ABC):
+class BaseScanner(ABC):
     """Interface de base pour tous les moteurs de scan marchands."""
 
     def __init__(self, merchant_name: str | None = None):
         # Charge la config du marchand si elle existe, sinon un dictionnaire vide
         self.config = MERCHANT_CONFIGS.get(merchant_name, {}) if merchant_name else {}
 
-    @abc.abstractmethod
-    def analyze(self, html_content: str) -> tuple[str, str]:
+    @abstractmethod
+    def analyze(self, html_content: str, url: str = "") -> tuple[str, str]:
+        """
+        Analyse le HTML d'un marchand.
+        L'URL est optionnelle et sert principalement au logging et au debug (dumps).
+        """
         pass
 
 
@@ -37,10 +42,19 @@ class AmazonScanner(BaseScanner):
     def __init__(self):
         super().__init__("amazon")  # Lie ce scanner à la clé "amazon" dans config.py
 
-    def analyze(self, html_content: str) -> tuple[str, str]:
+    def analyze(self, html_content: str, url: str = "") -> tuple[str, str]:
+        """
+        Analyse le contenu HTML d'une page Amazon pour déterminer le statut du stock.
+        """
         # 1. Validation technique (Seuil à 100 pour laisser passer les tests)
         if not html_content or len(html_content) < 100:
             logger.error(MSG_HTML_EMPTY)
+            if html_content:
+                from wetall_scanner.scanner.utils.html_inspector import (
+                    dump_suspicious_html,
+                )
+
+                dump_suspicious_html(url, html_content, reason="empty_or_short_html")
             return ScanStatus.ERREUR.value, MSG_HTML_EMPTY
 
         soup = BeautifulSoup(html_content, "html.parser")
@@ -66,9 +80,18 @@ class AmazonScanner(BaseScanner):
                 logger.info(MSG_OUT_OF_STOCK)
                 return ScanStatus.HORS_STOCK.value, MSG_OUT_OF_STOCK
 
-        # 5. Vérification facultative du titre
+        # 5. Détection anti-bot (Soft Block via absence du titre)
         if not soup.select_one("#productTitle"):
-            logger.warning(MSG_PRODUCT_TITLE_MISSING)
+            logger.warning(
+                f"AmazonScanner: {MSG_PRODUCT_TITLE_MISSING} - Suspicion de Captcha / Blocage robot pour l'URL: {url}"
+            )
+
+            # 📸 Déclenchement automatique du cliché HTML local
+            from wetall_scanner.scanner.utils.html_inspector import dump_suspicious_html
+
+            dump_suspicious_html(url, html_content, reason="missing_title_captcha")
+
+            return ScanStatus.ERREUR.value, MSG_PRODUCT_TITLE_MISSING
 
         # 6. Fallback final (Message lu depuis config.py)
         fallback_msg = self.config.get("fallback_message", MSG_NO_BUTTON)

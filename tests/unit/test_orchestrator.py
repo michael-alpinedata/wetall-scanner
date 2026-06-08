@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 from wetall_scanner.scanner.orchestrator import ScannerOrchestrator
 from wetall_scanner.scanner.database import DatabaseManager
 from wetall_scanner.scanner.http_client import HTTPClient
+from wetall_scanner.scanner.extractor import WetallExtractor
 
 
 class TestScannerOrchestrator:
@@ -17,10 +18,13 @@ class TestScannerOrchestrator:
         # Utilisation de 'spec' pour s'assurer qu'on n'appelle que des méthodes existantes
         mock_db = MagicMock(spec=DatabaseManager)
         mock_http = MagicMock(spec=HTTPClient)
+        mock_extractor = MagicMock(spec=WetallExtractor)
 
         # Le patch évite que psycopg2 ne tente de se connecter pendant l'init
         with patch("wetall_scanner.scanner.database.psycopg2.connect"):
-            return ScannerOrchestrator(db=mock_db, http=mock_http)
+            return ScannerOrchestrator(
+                db=mock_db, http=mock_http, extractor=mock_extractor
+            )
 
     def test_strategy_selection_logic(self, orch):
         """Vérifie que le bon scanner est choisi selon le nom du vendeur."""

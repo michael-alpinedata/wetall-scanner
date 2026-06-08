@@ -59,9 +59,14 @@ class TestAmazonScanner:
         """
         Vérifie la règle de sécurité (Logique 3) : si aucun ID connu n'est trouvé,
         le produit est considéré Hors Stock par défaut.
+        Note : On inclut un #productTitle pour contourner la validation anti-bot.
         """
         html = (
-            f"<html><body><div>Page produit sans boutons</div>{PADDING}</body></html>"
+            f"<html><body>"
+            f"<div id='productTitle'>Mon Produit de Test Fallback</div>"
+            f"<div>Page produit sans boutons</div>"
+            f"{PADDING}"
+            f"</body></html>"
         )
         with caplog.at_level(logging.WARNING):
             status, info = scanner.analyze(html)
