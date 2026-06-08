@@ -44,19 +44,27 @@ class DatabaseManager:
             logger.exception("Impossible d'établir une connexion à la base de données.")
             raise
 
-    def get_products_to_discover(self, limit: int = 10) -> list[dict]:
-        """Récupère les produits qui n'ont pas encore d'URL marchande finale."""
+def get_products_to_discover(self, limit: int = 10, product_id: int | None = None) -> list[dict]:
+        """Récupère les produits à découvrir, avec possibilité de cibler un ID précis."""
         query = """
             SELECT produit_id, url_wetall, nom_vendeur 
             FROM dim_produit 
             WHERE is_active = True 
-            AND url_marchand_finale IS NULL 
-            LIMIT %s;
+            AND url_marchand_finale IS NULL
         """
+        params = []
+        
+        if product_id:
+            query += " AND produit_id = %s"
+            params.append(product_id)
+            
+        query += " LIMIT %s;"
+        params.append(limit)
+        
         conn = self._get_connection()
         try:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute(query, (limit,))
+                cur.execute(query, tuple(params))
                 return [dict(row) for row in cur.fetchall()]
         finally:
             conn.close()

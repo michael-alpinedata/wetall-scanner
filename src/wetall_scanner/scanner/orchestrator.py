@@ -37,14 +37,15 @@ class ScannerOrchestrator:
         logger.debug(f"Aucune stratégie spécifique trouvée pour '{vendor_name}', passage au GenericScanner.")
         return self.default_strategy
 
-    def run_link_discovery(self, limit: int = 10):
+    def run_link_discovery(self, limit: int = 10, product_id: int | None = None):
         """
         Phase 1 : Enrichissement. 
         Trouve l'URL finale marchande pour les produits qui ne l'ont pas encore.
+        Possibilité de cibler un `product_id` précis (ex: pour les smoke tests).
         """
-        # On suppose une méthode en DB qui filtre : WHERE url_marchand_finale IS NULL
-        products = self.db.get_products_to_discover(limit=limit)
-        logger.info(f"Début discovery pour {len(products)} produits.")
+        # Le paramètre product_id est transmis ici au manager
+        products = self.db.get_products_to_discover(limit=limit, product_id=product_id)
+        logger.info(f"Début discovery pour {len(products)} produit(s).")
 
         for p in products:
             p_id = p['produit_id']
@@ -61,14 +62,16 @@ class ScannerOrchestrator:
             else:
                 logger.warning(f"Échec discovery pour {p_id} (toujours sur Wetall ou erreur {fetch_data['status_code']})")
 
-    def run_stock_monitoring(self, vendor: str | None = None, limit: int = 10):
+    def run_stock_monitoring(self, vendor: str | None = None, limit: int = 10, product_id: int | None = None):
         """
         Phase 2 : Surveillance.
         Vérifie le stock sur les URLs marchandes déjà connues.
+        Possibilité de cibler un `product_id` précis.
         """
-        # On filtre : WHERE url_marchand_finale IS NOT NULL
-        products = self.db.get_products_to_monitor(vendor=vendor, limit=limit)
-        logger.info(f"Début monitoring pour {len(products)} produits.")
+        # Note : Pense à ajouter `product_id: int | None = None` dans la signature 
+        # de db.get_products_to_monitor si tu veux aussi pouvoir cibler le monitoring.
+        products = self.db.get_products_to_monitor(vendor=vendor, limit=limit, product_id=product_id)
+        logger.info(f"Début monitoring pour {len(products)} produit(s).")
 
         results = []
         for p in products:
