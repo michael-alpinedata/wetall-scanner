@@ -67,11 +67,11 @@ class WetallExtractor:
         """Déduit le nom propre du vendeur à partir de l'URL marchande finale."""
         url_lower = url.lower()
         if "amazon" in url_lower or "amzn" in url_lower:
-            return "Amazon"
+            return "amazon"
         if "decathlon" in url_lower:
-            return "Decathlon"
+            return "decathlon"
         if "alltricks" in url_lower:
-            return "Alltricks"
+            return "alltricks"
 
         # Fallback dynamique si le domaine est inconnu (ex: https://www.boutique.fr/... -> Boutique)
         from urllib.parse import urlparse
