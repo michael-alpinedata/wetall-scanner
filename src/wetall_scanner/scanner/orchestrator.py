@@ -2,6 +2,7 @@ import logging
 from .database import DatabaseManager
 from .http_client import HTTPClient
 from .strategies import AmazonScanner, DecathlonScanner, GenericScanner
+from .extractor import WetallExtractor
 
 # Configuration du logger pour le module orchestrator
 logger = logging.getLogger(__name__)
@@ -18,9 +19,10 @@ class ScannerOrchestrator:
         "decathlon": DecathlonScanner(),
     }
 
-    def __init__(self, db: DatabaseManager, http: HTTPClient):
+    def __init__(self, db: DatabaseManager, http: HTTPClient, extractor:WetallExtractor):
         self.db = db              
         self.http = http
+        self.extractor = extractor
         self.default_strategy = GenericScanner()
         logger.debug("ScannerOrchestrator initialisé avec ses sous-composants.")
 
@@ -43,24 +45,40 @@ class ScannerOrchestrator:
         Trouve l'URL finale marchande pour les produits qui ne l'ont pas encore.
         Possibilité de cibler un `product_id` précis (ex: pour les smoke tests).
         """
-        # Le paramètre product_id est transmis ici au manager
         products = self.db.get_products_to_discover(limit=limit, product_id=product_id)
         logger.info(f"Début discovery pour {len(products)} produit(s).")
 
         for p in products:
             p_id = p['produit_id']
-            # On appelle l'URL Wetall qui va nous rediriger
             fetch_data = self.http.fetch(p['url_wetall'])
             
+            if fetch_data['status_code'] != 200:
+                logger.error(
+                    f"Échec discovery pour {p_id} : impossible de joindre l'URL Wetall "
+                    f"(Status: {fetch_data['status_code']})"
+                )
+                continue
+
             final_url = fetch_data['url_finale']
             
-            # Vérification : est-ce qu'on a bien atterri chez un marchand ?
-            if "wetall.fr" not in final_url and fetch_data['status_code'] == 200:
+            # L'orchestrateur délègue le travail de parsing à l'extracteur
+            if "wetall.fr" in final_url:
+                html_content = fetch_data.get('text') or fetch_data.get('content') or ""
+                extracted_url = self.extractor.extract_buy_link(html_content)
+                
+                if extracted_url:
+                    if "wetall.fr/go/" in extracted_url or "wetall.fr/out/" in extracted_url:
+                        go_fetch = self.http.fetch(extracted_url)
+                        if go_fetch['status_code'] == 200:
+                            final_url = go_fetch['url_finale']
+                    else:
+                        final_url = extracted_url
+
+            if "wetall.fr" not in final_url:
                 logger.info(f"Lien découvert pour {p_id} : {final_url}")
-                # On met à jour uniquement l'URL dans la dimension produit
                 self.db.update_product_merchant_url(p_id, final_url)
             else:
-                logger.warning(f"Échec discovery pour {p_id} (toujours sur Wetall ou erreur {fetch_data['status_code']})")
+                logger.warning(f"Échec discovery pour {p_id}")
 
     def run_stock_monitoring(self, vendor: str | None = None, limit: int = 10, product_id: int | None = None):
         """
