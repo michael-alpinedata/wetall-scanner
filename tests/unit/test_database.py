@@ -60,4 +60,4 @@ class TestDatabaseManager:
             f"Statut attendu 'Hors Stock', reçu : {data['status']}"
         )
         assert "timestamp" in data, "Le timestamp devrait être présent dans le JSON"
-        assert "Résultat sauvegardé" in caplog.text
+        assert "sauvegardé pour 10" in caplog.text
