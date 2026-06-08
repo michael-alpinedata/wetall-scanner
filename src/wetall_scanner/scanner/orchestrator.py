@@ -118,7 +118,7 @@ class ScannerOrchestrator:
             # 1. Sélection intelligente de la méthode de transport
             # On évite le "test & fail" qui grille ton IP.
             # On privilégie le furtif dès le départ pour les sites protégés.
-            if vendeur in ["Amazon", "Decathlon"]:
+            if vendeur in ["amazon", "decathlon"]:
                 fetch_data = self.http.fetch_stealth(target_url)
             else:
                 fetch_data = self.http.fetch(target_url)
