@@ -125,3 +125,35 @@ class DatabaseManager:
             logger.info(f"Monitoring : Statut {status_code} sauvegardé pour {product_id}")
         finally:
             conn.close()
+
+
+    def insert_product(self, product_data: dict) -> int:
+        """
+        Insère un nouveau produit dans dim_produit et retourne son produit_id.
+        Utile pour les scripts d'import et l'isolation des tests.
+        """
+        query = """
+            INSERT INTO public.dim_produit (url_wetall, nom_produit, nom_vendeur, url_marchand_finale)
+            VALUES (%(url_wetall)s, %(nom_produit)s, %(nom_vendeur)s, %(url_marchand_finale)s)
+            RETURNING produit_id;
+        """
+        conn = self._get_connection()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(query, product_data)
+                # Récupère l'ID généré par le SERIAL
+                res = cur.fetchone()
+                return res[0] if res else None
+        finally:
+            conn.close()
+
+    def delete_product(self, product_id: int):
+        """Supprime définitivement un produit de la base via son ID."""
+        query = "DELETE FROM public.dim_produit WHERE produit_id = %s;"
+        conn = self._get_connection()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(query, (product_id,))
+            logger.info(f"Produit de test {product_id} supprimé avec succès.")
+        finally:
+            conn.close()
