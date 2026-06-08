@@ -121,7 +121,9 @@ class ScannerOrchestrator:
             elif fetch_data["error"]:
                 status_code, debug_info = "Erreur", fetch_data["error"]
             else:
-                status_code, debug_info = strategy.analyze(fetch_data["html"])
+                status_code, debug_info = strategy.analyze(
+                    html_content=fetch_data["html"], url=p["url_marchand_finale"]
+                )
 
             # Sauvegarde du résultat (Historisation)
             self.db.save_scan_result(
