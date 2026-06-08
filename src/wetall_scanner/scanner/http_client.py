@@ -32,7 +32,7 @@ class HTTPClient:
         "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36 Edge/119.0.0.0",
     ]
 
-    def __init__(self, timeout: int = 15):
+    def __init__(self, timeout: int = 30):
         """Initialise le client avec un timeout par défaut."""
         self.timeout = timeout
         logger.debug(f"HTTPClient initialisé avec un timeout de {timeout}s.")
