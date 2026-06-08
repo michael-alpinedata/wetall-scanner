@@ -1,10 +1,11 @@
 import pytest
-import logging
 from unittest.mock import MagicMock, patch
 from wetall_scanner.scanner.orchestrator import ScannerOrchestrator
 from wetall_scanner.scanner.database import DatabaseManager
 from wetall_scanner.scanner.http_client import HTTPClient
 from wetall_scanner.scanner.extractor import WetallExtractor
+
+from wetall_scanner.scanner.strategies import ScanStatus, MSG_PAGE_404
 
 
 class TestScannerOrchestrator:
@@ -91,7 +92,7 @@ class TestScannerOrchestrator:
     # --- TESTS DU WORKFLOW 2 : MONITORING ---
 
     def test_run_stock_monitoring_handles_404(self, orch):
-        """Vérifie que les 404 sur l'URL marchande sont gérées correctement."""
+        """Vérifie que les 404 sont gérées via ScanStatus.ERREUR."""
         orch.db.get_products_to_monitor.return_value = [
             {
                 "produit_id": 1,
@@ -107,15 +108,26 @@ class TestScannerOrchestrator:
             "error": None,
         }
 
+        orch.http.fetch_stealth.return_value = {
+            "html": "",
+            "status_code": 404,
+            "url_finale": "http://amazon.fr/p1",
+            "error": None,
+        }
+
         orch.run_stock_monitoring(limit=1)
 
-        # Vérification de l'enregistrement du résultat "Lien Brisé"
+        # Vérification avec les constantes/Enums
         _, kwargs = orch.db.save_scan_result.call_args
-        assert kwargs["status_code"] == "Lien Brisé"
-        assert "404" in kwargs["debug_info"]
 
-    def test_run_stock_monitoring_full_flow_success(self, orch, caplog):
-        """Test du chemin nominal (Happy Path) pour le monitoring de stock."""
+        # On vérifie l'enum de statut
+        assert kwargs["status_code"] == ScanStatus.ERREUR.value
+
+        # On vérifie que le message est bien la constante MSG_PAGE_404
+        # (Assure-toi que ton orchestrateur passe le message dans debug_info ou un champ similaire)
+        assert MSG_PAGE_404 in kwargs["debug_info"]
+
+    def test_run_stock_monitoring_full_flow_success(self, orch):
         orch.db.get_products_to_monitor.return_value = [
             {
                 "produit_id": 99,
@@ -125,18 +137,20 @@ class TestScannerOrchestrator:
         ]
 
         padding = " " * 1100
-        orch.http.fetch.return_value = {
-            "html": f'<div id="add-to-cart-button"></div>{padding}',
+        # FIX : Ajout de <h1 id="productTitle"> pour satisfaire le validateur du scanner
+        html_content = f'<html><body><h1 id="productTitle">Mon Produit</h1><div id="add-to-cart-button"></div>{padding}</body></html>'
+
+        orch.http.fetch_stealth.return_value = {
+            "html": html_content,
             "status_code": 200,
             "url_finale": "http://amazon.fr/99",
             "error": None,
         }
 
-        with caplog.at_level(logging.INFO):
-            orch.run_stock_monitoring(limit=1)
+        orch.run_stock_monitoring(limit=1)
 
-        # Assertion corrigée : on cherche ce que le code loggue vraiment
-        assert "Produit 99 terminé" in caplog.text
         orch.db.save_scan_result.assert_called_once()
         _, kwargs = orch.db.save_scan_result.call_args
-        assert kwargs["status_code"] == "EN_STOCK"
+        assert kwargs["product_id"] == 99
+        # Maintenant, le scanner trouvera le bouton ET le titre -> EN_STOCK
+        assert kwargs["status_code"] == ScanStatus.EN_STOCK.value

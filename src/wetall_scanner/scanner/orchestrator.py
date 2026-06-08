@@ -6,6 +6,8 @@ from .http_client import HTTPClient
 from .strategies import AmazonScanner, DecathlonScanner, GenericScanner
 from .extractor import WetallExtractor
 
+from wetall_scanner.scanner.strategies import ScanStatus, MSG_PAGE_404
+
 # Configuration du logger pour le module orchestrator
 logger = logging.getLogger(__name__)
 
@@ -97,11 +99,7 @@ class ScannerOrchestrator:
     def run_stock_monitoring(
         self, vendor: str | None = None, limit: int = 10, product_id: int | None = None
     ):
-        """
-        Phase 2 : Surveillance.
-        Vérifie le stock sur les URLs marchandes déjà connues.
-        Possibilité de cibler un `product_id` précis.
-        """
+        """Phase 2 : Surveillance."""
         products = self.db.get_products_to_monitor(
             vendor=vendor, limit=limit, product_id=product_id
         )
@@ -113,41 +111,44 @@ class ScannerOrchestrator:
             target_url = p["url_marchand_finale"]
             vendeur = p["nom_vendeur"]
 
-            strategy = self._get_strategy(vendeur)
-
-            # 1. Sélection intelligente de la méthode de transport
-            # On évite le "test & fail" qui grille ton IP.
-            # On privilégie le furtif dès le départ pour les sites protégés.
+            # 1. Transport (Fetch)
             if vendeur in ["amazon", "decathlon"]:
                 fetch_data = self.http.fetch_stealth(target_url)
             else:
                 fetch_data = self.http.fetch(target_url)
 
-            # 2. Analyse initiale
-            status_code, debug_info = strategy.analyze(
-                fetch_data["html"], url=target_url
-            )
+            # Extraction sécurisée des données de fetch
+            http_status = fetch_data.get("status_code", 0)
+            html_content = fetch_data.get("html", "")
+            url_finale = fetch_data.get("url_finale", target_url)
 
-            # 3. Gestion de secours (Fallback) - UNIQUEMENT si le furtif échoue
-            # Si même le furtif détecte un blocage, on ne relance pas une 3ème fois
-            # pour ne pas amplifier le comportement robotique.
-            if status_code == "ERREUR_TECHNIQUE" and "Captcha" in debug_info:
-                logger.warning(f"Blocage persistant sur {vendeur} pour {p_id}.")
-                # Ici : optionnellement, ajouter un délai aléatoire (sleep)
-                # ou marquer comme "A_VERIFIER" pour ne pas spammer.
+            # 2. Gestion des erreurs HTTP AVANT l'analyse métier
+            if http_status == 404:
+                scan_status = ScanStatus.ERREUR.value
+                debug_info = MSG_PAGE_404
+            elif http_status != 200:
+                scan_status = ScanStatus.ERREUR.value
+                debug_info = f"HTTP Error {http_status}"
+            else:
+                # 3. Analyse métier (seulement si status 200)
+                strategy = self._get_strategy(vendeur)
+                scan_status, debug_info = strategy.analyze(html_content, url=target_url)
+
+                # 4. Gestion spécifique Anti-bot
+                if scan_status == ScanStatus.ERREUR.value and "Captcha" in debug_info:
+                    logger.warning(f"Blocage persistant sur {vendeur} pour {p_id}.")
 
             # Sauvegarde du résultat
             self.db.save_scan_result(
                 product_id=p_id,
-                status_code=status_code,
-                http_code=fetch_data["status_code"],
-                url_finale=fetch_data["url_finale"],  # Utilise l'URL réelle du fetch
+                status_code=scan_status,
+                http_code=http_status,
+                url_finale=url_finale,
                 debug_info=debug_info,
             )
-            results.append({"produit_id": p_id, "status": status_code})
+            results.append({"produit_id": p_id, "status": scan_status})
 
-            # 4. Anti-détection : Pause aléatoire entre les produits
-            # Évite de faire des requêtes en rafale ("Burst")
+            # 5. Pause aléatoire
             time.sleep(random.uniform(2, 5))
 
         return results

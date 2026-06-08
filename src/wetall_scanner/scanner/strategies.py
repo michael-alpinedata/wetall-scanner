@@ -35,41 +35,79 @@ class BaseScanner(ABC):
 
 
 class AmazonScanner(BaseScanner):
-    """Scanner Amazon.fr optimisé, piloté par la configuration (Data-Driven)."""
+    """Scanner Amazon.fr optimisé, piloté par la configuration."""
 
     def __init__(self):
-        super().__init__("amazon")  # Lie ce scanner à la clé "amazon" dans config.py
+        super().__init__("amazon")
 
     def analyze(self, html_content: str, url: str = "") -> tuple[str, str]:
-        """
-        Orchestrateur d'analyse : délègue la détection aux méthodes spécialisées.
-        """
-        # 1. Validation technique initiale
+        # 1. Validation technique de base
         if not html_content or len(html_content) < 100:
-            logger.error(MSG_HTML_EMPTY)
-            self._dump_if_suspicious(url, html_content, "empty_or_short_html")
             return ScanStatus.ERREUR.value, MSG_HTML_EMPTY
 
         soup = BeautifulSoup(html_content, "html.parser")
 
-        # 2. Pipeline de détection (priorité haute -> basse)
+        # 2. Détection 404
         if self._is_404(soup):
             return ScanStatus.ERREUR.value, MSG_PAGE_404
 
-        if self._is_blocked(soup, url, html_content):
+        # 3. Détection Blocage (Anti-bot explicite) - PRIORITÉ ABSOLUE
+        # Si on est ici, le serveur refuse de nous parler normalement.
+        if self._is_bot_blocked(soup, url, html_content):
             return ScanStatus.ERREUR.value, "Blocage anti-bot détecté"
 
+        # 4. Détection Hors Stock Explicite - PRIORITÉ HAUTE
+        # On vérifie avant de valider la structure, car une page "Hors Stock"
+        # peut avoir une structure différente d'une page produit classique.
+        if self._is_explicitly_out_of_stock(soup):
+            return ScanStatus.HORS_STOCK.value, MSG_OUT_OF_STOCK
+
+        # 5. Validation structurelle (Le Gardien)
+        # Si on n'a pas le titre et qu'on n'est pas "Hors Stock",
+        # alors on est effectivement dans un cas inconnu (A_VERIFIER).
+        if not soup.select_one("#productTitle"):
+            logger.warning(f"AmazonScanner: Titre absent sur {url}.")
+            self._dump_if_suspicious(
+                url, html_content, reason="missing_title_structural_check"
+            )
+            return ScanStatus.A_VERIFIER.value, "Page invalide (titre absent)"
+
+        # 6. Analyse métier (Page produit confirmée)
         if self._is_in_stock(soup):
             return ScanStatus.EN_STOCK.value, MSG_BUY_BUTTON
 
-        if self._is_out_of_stock(soup):
-            return ScanStatus.HORS_STOCK.value, MSG_OUT_OF_STOCK
+        # Si on a le titre, pas de blocage, pas de stock trouvé, et pas de "Hors Stock" détecté :
+        # C'est une page produit dont le statut nous échappe.
+        return ScanStatus.A_VERIFIER.value, f"Statut ambigu (Fallback) : {url}"
 
-        # 3. Fallback final (aucun pattern matché)
-        logger.warning(f"Statut ambigu pour {url}")
-        return ScanStatus.A_VERIFIER.value, f"Statut ambigu : {url}"
+    # --- Méthodes de diagnostic ---
 
-    # --- Méthodes de détection spécialisées ---
+    def _is_bot_blocked(self, soup: BeautifulSoup, url: str, html: str) -> bool:
+        """Détecte les signatures de blocage indiscutables."""
+        if soup.select_one('img[alt="Dogs of Amazon"]'):
+            return True
+        if soup.select_one('form[action*="captcha"]'):
+            return True
+        return False
+
+    def _is_explicitly_out_of_stock(self, soup: BeautifulSoup) -> bool:
+        """
+        Détecte le bloc #availability.
+        C'est un marqueur fort qui valide que la page est "connue", même sans titre.
+        """
+        availability_block = soup.select_one("#availability")
+        if availability_block:
+            text = availability_block.get_text().lower()
+            return any(
+                kw in text
+                for kw in ["indisponible", "rupture", "currently unavailable"]
+            )
+        return False
+
+    def _is_in_stock(self, soup: BeautifulSoup) -> bool:
+        """Détecte la présence d'un bouton d'achat."""
+        in_stock_selectors = self.config.get("in_stock_selectors", [])
+        return any(soup.select_one(sel) for sel in in_stock_selectors)
 
     def _is_404(self, soup: BeautifulSoup) -> bool:
         title = soup.select_one("title")
@@ -77,35 +115,7 @@ class AmazonScanner(BaseScanner):
             title and ("404" in title.text or "non trouvée" in title.text.lower())
         )
 
-    def _is_blocked(self, soup: BeautifulSoup, url: str, html: str) -> bool:
-        # Signature "Dog" ou absence de structure critique
-        has_title = soup.select_one("#productTitle") is not None
-        has_buy_box = (
-            soup.select_one("#buyBox") is not None
-            or soup.select_one("#feature-bullets") is not None
-        )
-        is_dog_page = soup.select_one('img[alt="Dogs of Amazon"]') is not None
-
-        if is_dog_page or (not has_title and not has_buy_box):
-            logger.warning(f"AmazonScanner: Blocage structurel détecté pour {url}")
-            self._dump_if_suspicious(url, html, "structural_block_detected")
-            return True
-        return False
-
-    def _is_in_stock(self, soup: BeautifulSoup) -> bool:
-        in_stock_selectors = self.config.get("in_stock_selectors", [])
-        return any(soup.select_one(sel) for sel in in_stock_selectors)
-
-    def _is_out_of_stock(self, soup: BeautifulSoup) -> bool:
-        availability_block = soup.select_one("#availability")
-        if availability_block:
-            text = availability_block.get_text().lower()
-            out_of_stock_keywords = self.config.get("out_of_stock_keywords", [])
-            return any(word in text for word in out_of_stock_keywords)
-        return False
-
     def _dump_if_suspicious(self, url: str, html: str, reason: str):
-        """Helper pour éviter la répétition du code de dump."""
         from wetall_scanner.scanner.utils.html_inspector import dump_suspicious_html
 
         dump_suspicious_html(url, html, reason=reason)

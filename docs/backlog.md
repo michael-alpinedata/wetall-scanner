@@ -31,4 +31,5 @@ pas n'importe quelle url? ou add produit test dans bdd puis remove (reprednre di
 
 14:40-15:05
 - reprise
-- on se fait blocker par amazon, on va réagir et uriliser les anciennes straégies qui marchent 
+- on se fait blocker par amazon, on va réagir et uriliser les anciennes straégies 
+qui marchent (curl_cffi par défaut)
