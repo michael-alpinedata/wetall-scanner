@@ -1,18 +1,17 @@
-import httpx
+import time
 import random
+import httpx
 import logging
 from typing import TypedDict, Optional
 
+# Assumons que ces imports existent déjà dans ton projet
 from curl_cffi import requests as cffi_requests
-from curl_cffi.requests.errors import RequestsError
 
-
-# Configuration du logger pour le module réseau
 logger = logging.getLogger(__name__)
 
 
 class FetchResult(TypedDict):
-    """Structure de données retournée par le client HTTP."""
+    """Structure de réponse unifiée pour le scraping."""
 
     html: str
     status_code: int
@@ -23,56 +22,47 @@ class FetchResult(TypedDict):
 class HTTPClient:
     """
     Client HTTP optimisé pour le scraping de fiches produits.
-    Gère la simulation de navigateur (User-Agents), les timeouts et les redirections.
+    Gère la simulation de navigateur (User-Agents), les timeouts,
+    le contournement anti-bot et le lissage du trafic (jitter).
     """
 
-    # Liste de User-Agents modernes pour simuler différents navigateurs et systèmes
     USER_AGENTS = [
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36",
         "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36 Edge/119.0.0.0",
-        "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1",
     ]
 
     def __init__(self, timeout: int = 15):
-        """
-        Args:
-            timeout (int): Temps maximum en secondes pour chaque requête.
-        """
+        """Initialise le client avec un timeout par défaut."""
         self.timeout = timeout
         logger.debug(f"HTTPClient initialisé avec un timeout de {timeout}s.")
 
-    def fetch(self, url: str) -> FetchResult:
-        """
-        Récupère le contenu d'une URL en suivant les redirections.
+    def _apply_jitter(self):
+        """Ajoute un délai aléatoire pour simuler une navigation humaine."""
+        delay = random.uniform(2.0, 5.0)
+        logger.debug(
+            f"Jitter appliqué : attente de {delay:.2f}s avant la prochaine action."
+        )
+        time.sleep(delay)
 
-        Args:
-            url (str): L'URL cible à scanner (Wetall ou Marchand).
-
-        Returns:
-            FetchResult: Un dictionnaire contenant le HTML, le code HTTP,
-                         l'URL finale (après redirection) et les erreurs éventuelles.
+    def fetch(self, url: str) -> dict:
         """
-        # Choix d'un User-Agent aléatoire pour chaque requête
+        Récupère le contenu d'une URL via httpx.
+        Retourne un dictionnaire standardisé, sans lever d'exception sur les 4xx/5xx.
+        """
         ua = random.choice(self.USER_AGENTS)
-        headers = {
-            "User-Agent": ua,
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-            "Accept-Language": "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7",
-            "Referer": "https://www.google.com/",
-            "Upgrade-Insecure-Requests": "1",
-        }
+        headers = {"User-Agent": ua}
 
-        logger.debug(f"Tentative de fetch : {url} | UA: {ua[:50]}...")
+        logger.info(f"Tentative fetch standard : {url}")
 
         try:
-            # follow_redirects=True est crucial pour obtenir l'URL finale marchande depuis Wetall
             with httpx.Client(timeout=self.timeout, follow_redirects=True) as client:
                 response = client.get(url, headers=headers)
 
-                logger.info(
-                    f"Fetch réussi: {url} | Status: {response.status_code} | Redirect vers: {response.url}"
-                )
+                # On ne lève pas d'exception ici (raise_for_status supprimé)
+                # pour laisser l'Orchestrator gérer les 404 proprement.
+
+                logger.info(f"Fetch réussi : {url} | Status: {response.status_code}")
 
                 return {
                     "html": response.text,
@@ -82,55 +72,49 @@ class HTTPClient:
                 }
 
         except httpx.ConnectTimeout:
-            logger.warning(f"Timeout de connexion atteint pour l'URL: {url}")
+            # Message corrigé pour correspondre exactement à l'attente du test
+            logger.warning(f"Timeout de connexion atteint pour {url}")
             return {
                 "html": "",
                 "status_code": 0,
                 "url_finale": url,
                 "error": "Timeout de connexion",
             }
-        except httpx.HTTPStatusError as e:
-            logger.error(f"Erreur de statut HTTP pour {url}: {str(e)}")
-            return {
-                "html": "",
-                "status_code": e.response.status_code,
-                "url_finale": url,
-                "error": f"Erreur HTTP: {str(e)}",
-            }
-        except Exception as e:
-            # Capture générique pour éviter de faire planter l'orchestrateur
-            # logger.exception permet d'enregistrer la stacktrace complète dans les logs
-            logger.exception(f"Erreur non gérée lors du fetch de {url}")
-            return {
-                "html": "",
-                "status_code": 0,
-                "url_finale": url,
-                "error": f"Exception: {str(e)[:50]}",
-            }
 
-    def fetch_stealth(self, url: str) -> dict:
+        except Exception as e:
+            logger.exception(f"Erreur inattendue sur {url}")
+            return {"html": "", "status_code": 500, "url_finale": url, "error": str(e)}
+
+    def fetch_stealth(self, url: str) -> FetchResult:
         """
-        Effectue une requête ultra-furtive en imitant la signature TLS et les headers de Chrome.
-        Idéal pour contourner Cloudflare (Decathlon) et le WAF basique d'Amazon.
+        Effectue une requête ultra-furtive via curl_cffi (imitation TLS Chrome).
         """
-        logger.info(f"Stealth Fetch: Tentative de contournement anti-bot pour {url}")
+        logger.info(f"Stealth Fetch : Contournement anti-bot pour {url}")
 
         try:
-            # impersonate="chrome124" modifie le moteur TLS pour qu'il soit identique à Chrome
+            # impersonate="chrome124" émule le handshake TLS de Chrome
             response = cffi_requests.get(
-                url,
-                impersonate="chrome124",
-                timeout=15,
-                # Optionnel : proxies={"http": "ton_proxy", "https": "ton_proxy"}
+                url, impersonate="chrome124", timeout=self.timeout
             )
 
-            # On retourne la même structure de dictionnaire que ton httpx
-            return {
-                "status": response.status_code,
+            logger.info(
+                f"Stealth Fetch réussi : {url} | Status: {response.status_code}"
+            )
+
+            result = {
                 "html": response.text,
-                "final_url": str(response.url),
+                "status_code": response.status_code,
+                "url_finale": str(response.url),
+                "error": None,
+            }
+        except Exception as e:
+            logger.error(f"Erreur critique Stealth Fetch sur {url}: {e}")
+            result = {
+                "html": "",
+                "status_code": 500,
+                "url_finale": url,
+                "error": str(e),
             }
 
-        except RequestsError as e:
-            logger.error(f"Erreur Stealth Fetch sur {url}: {e}")
-            return {"status": 500, "html": "", "final_url": url}
+        self._apply_jitter()
+        return result
