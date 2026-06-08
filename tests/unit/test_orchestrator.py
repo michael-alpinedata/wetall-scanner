@@ -40,16 +40,14 @@ class TestScannerOrchestrator:
     # --- TESTS DU WORKFLOW 1 : DISCOVERY ---
 
     def test_run_link_discovery_success(self, orch):
-        """
-        Vérifie que la découverte d'un lien Wetall entraîne bien
-        la mise à jour combinée (URL + Vendeur) en base.
-        """
-        # Simulation d'un produit à découvrir
+        # 1. On injecte le ID spécifique
+        target_id = 10
+
+        # 2. On configure le mock pour ne retourner QUE ce produit
         orch.db.get_products_to_discover.return_value = [
-            {"produit_id": 10, "url_wetall": "https://wetall.fr/p/10"}
+            {"produit_id": target_id, "url_wetall": "https://wetall.fr/p/10"}
         ]
 
-        # Simulation d'une redirection réussie vers Amazon
         orch.http.fetch.return_value = {
             "status_code": 200,
             "url_finale": "https://www.amazon.fr/dp/B000XYZ",
@@ -57,11 +55,19 @@ class TestScannerOrchestrator:
             "error": None,
         }
 
-        orch.run_link_discovery(limit=1)
+        orch.extract_merchant_name.return_value = "amazon"
 
-        # On vérifie l'appel unique et combiné (ID, URL, Vendeur extrait)
+        # 3. On appelle le run en passant le product_id
+        orch.run_link_discovery(limit=1, product_id=target_id)
+
+        # 4. On vérifie que la DB a bien reçu la mise à jour pour CE produit
         orch.db.update_product_discovery_results.assert_called_once_with(
-            10, "https://www.amazon.fr/dp/B000XYZ", "Amazon"
+            target_id, "https://www.amazon.fr/dp/B000XYZ", "amazon"
+        )
+
+        # 5. On vérifie que le mock de DB a bien été appelé avec le bon filtre
+        orch.db.get_products_to_discover.assert_called_once_with(
+            limit=1, product_id=target_id
         )
 
     def test_run_link_discovery_failure_stays_on_wetall(self, orch):
