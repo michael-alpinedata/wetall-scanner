@@ -1,13 +1,36 @@
 import re
 from bs4 import BeautifulSoup
 
+
 class WetallExtractor:
     """Responsabilité unique : Extraire et normaliser les données du HTML brut de Wetall."""
-    
+
+    def extract_from_fetch_data(self, fetch_data: dict) -> str | None:
+        """
+        Extrait le lien marchand depuis le dictionnaire retourné par le HTTPClient.
+        Gère la tolérance aux différentes clés de contenu ('html', 'text', 'content').
+        """
+        html_content = (
+            fetch_data.get("html")
+            or fetch_data.get("text")
+            or fetch_data.get("content")
+            or ""
+        )
+        if not html_content:
+            return None
+        return self.extract_buy_link(html_content)
+
+    def is_internal_redirect(self, url: str) -> bool:
+        """
+        Détermine si l'URL extraite est un lien de redirection interne Wetall (/go/ ou /out/)
+        qui nécessite un second appel réseau pour découvrir le marchand final.
+        """
+        return any(path in url for path in ["wetall.fr/go/", "wetall.fr/out/"])
+
     def extract_buy_link(self, html_content: str) -> str | None:
         if not html_content:
             return None
-            
+
         soup = BeautifulSoup(html_content, "html.parser")
         found_url = None
 
@@ -39,6 +62,26 @@ class WetallExtractor:
                     break
 
         return self._normalize_url(found_url) if found_url else None
+
+    def extract_merchant_name(self, url: str) -> str:
+        """Déduit le nom propre du vendeur à partir de l'URL marchande finale."""
+        url_lower = url.lower()
+        if "amazon" in url_lower or "amzn" in url_lower:
+            return "Amazon"
+        if "decathlon" in url_lower:
+            return "Decathlon"
+        if "alltricks" in url_lower:
+            return "Alltricks"
+
+        # Fallback dynamique si le domaine est inconnu (ex: https://www.boutique.fr/... -> Boutique)
+        from urllib.parse import urlparse
+
+        try:
+            domain = urlparse(url).netloc or urlparse(url).path
+            clean_domain = domain.replace("www.", "").split(".")[0]
+            return clean_domain.capitalize() if clean_domain else "Marchand"
+        except Exception:
+            return "Marchand"
 
     def _normalize_url(self, url: str) -> str:
         clean_url = url.strip()
