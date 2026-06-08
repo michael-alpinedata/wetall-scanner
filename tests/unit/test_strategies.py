@@ -1,10 +1,15 @@
 import pytest
 import logging
 from wetall_scanner.scanner.strategies import AmazonScanner
-from wetall_scanner.scanner.constants import ScanStatus, MSG_BUY_BUTTON, MSG_OUT_OF_STOCK
+from wetall_scanner.scanner.constants import (
+    ScanStatus,
+    MSG_BUY_BUTTON,
+    MSG_OUT_OF_STOCK,
+)
 from wetall_scanner.scanner.config import MERCHANT_CONFIGS
 
 PADDING = " " * 1000
+
 
 class TestAmazonScanner:
     """
@@ -52,13 +57,15 @@ class TestAmazonScanner:
 
     def test_analyze_fallback_indisponible(self, scanner, caplog):
         """
-        Vérifie la règle de sécurité (Logique 3) : si aucun ID connu n'est trouvé, 
+        Vérifie la règle de sécurité (Logique 3) : si aucun ID connu n'est trouvé,
         le produit est considéré Hors Stock par défaut.
         """
-        html = f'<html><body><div>Page produit sans boutons</div>{PADDING}</body></html>'
+        html = (
+            f"<html><body><div>Page produit sans boutons</div>{PADDING}</body></html>"
+        )
         with caplog.at_level(logging.WARNING):
             status, info = scanner.analyze(html)
-            
+
         expected_fallback = MERCHANT_CONFIGS["amazon"]["fallback_message"]
         assert status == ScanStatus.HORS_STOCK.value
         assert info == expected_fallback

@@ -4,6 +4,7 @@ import respx
 import logging
 from wetall_scanner.scanner.http_client import HTTPClient
 
+
 class TestHTTPClient:
     @pytest.fixture
     def client(self):
@@ -14,13 +15,14 @@ class TestHTTPClient:
         """Vérifie que les redirections sont suivies et l'URL finale capturée."""
         target_url = "https://wetall.fr/go/amazon-123"
         final_url = "https://www.amazon.fr/dp/B001"
-        
+
         # Simulation d'une redirection
-        respx.get(target_url).mock(return_value=httpx.Response(
-            302, 
-            headers={"Location": final_url}
-        ))
-        respx.get(final_url).mock(return_value=httpx.Response(200, text="<html>Amazon</html>"))
+        respx.get(target_url).mock(
+            return_value=httpx.Response(302, headers={"Location": final_url})
+        )
+        respx.get(final_url).mock(
+            return_value=httpx.Response(200, text="<html>Amazon</html>")
+        )
 
         with caplog.at_level(logging.INFO):
             result = client.fetch(target_url)
@@ -37,7 +39,9 @@ class TestHTTPClient:
 
         result = client.fetch(url)
         assert result["status_code"] == 404
-        assert result["error"] is None # httpx ne lève pas d'exception pour 404 par défaut
+        assert (
+            result["error"] is None
+        )  # httpx ne lève pas d'exception pour 404 par défaut
 
     @respx.mock
     def test_fetch_timeout_exception(self, client, caplog):
@@ -58,7 +62,7 @@ class TestHTTPClient:
         with respx.mock:
             respx.get("https://t.com").mock(return_value=httpx.Response(200))
             client.fetch("https://t.com")
-            
+
             last_request = respx.calls.last.request
             assert "User-Agent" in last_request.headers
             assert "Mozilla/5.0" in last_request.headers["User-Agent"]

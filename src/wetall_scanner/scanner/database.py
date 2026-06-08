@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 # Chargement des variables d'environnement (DATABASE_URL, etc.)
 load_dotenv()
 
+
 class DatabaseManager:
     """
     Gestionnaire de persistance pour le scanner.
@@ -24,7 +25,9 @@ class DatabaseManager:
         self.db_url = os.getenv("DATABASE_URL")
         if not self.db_url:
             logger.critical("Variable d'environnement DATABASE_URL absente.")
-            raise ValueError("Erreur critique : La variable d'environnement DATABASE_URL est absente.")
+            raise ValueError(
+                "Erreur critique : La variable d'environnement DATABASE_URL est absente."
+            )
         logger.debug("DatabaseManager initialisé avec succès.")
 
     def _get_connection(self):
@@ -44,7 +47,9 @@ class DatabaseManager:
             logger.exception("Impossible d'établir une connexion à la base de données.")
             raise
 
-    def get_products_to_discover(self, limit: int = 10, product_id: int | None = None) -> list[dict]:
+    def get_products_to_discover(
+        self, limit: int = 10, product_id: int | None = None
+    ) -> list[dict]:
         """Récupère les produits à découvrir, avec possibilité de cibler un ID précis."""
         query = """
             SELECT produit_id, url_wetall, nom_vendeur 
@@ -53,14 +58,14 @@ class DatabaseManager:
             AND url_marchand_finale IS NULL
         """
         params = []
-        
+
         if product_id:
             query += " AND produit_id = %s"
             params.append(product_id)
-            
+
         query += " LIMIT %s;"
         params.append(limit)
-        
+
         conn = self._get_connection()
         try:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -82,7 +87,9 @@ class DatabaseManager:
 
     # --- WORKFLOW 2 : MONITORING (Vérifier le Stock) ---
 
-    def get_products_to_monitor(self, vendor: str | None = None, limit: int = 10, product_id: int | None = None) -> list[dict]:
+    def get_products_to_monitor(
+        self, vendor: str | None = None, limit: int = 10, product_id: int | None = None
+    ) -> list[dict]:
         """Récupère les produits prêts pour le scan de stock (URL finale connue), avec ciblage possible."""
         query = """
             SELECT produit_id, url_marchand_finale, nom_vendeur 
@@ -94,11 +101,11 @@ class DatabaseManager:
         if vendor:
             query += " AND nom_vendeur = %s"
             params.append(vendor)
-            
+
         if product_id:
             query += " AND produit_id = %s"
             params.append(product_id)
-        
+
         query += " LIMIT %s;"
         params.append(limit)
 
@@ -110,7 +117,14 @@ class DatabaseManager:
         finally:
             conn.close()
 
-    def save_scan_result(self, product_id: int, status_code: str, http_code: int, url_finale: str, debug_info: str):
+    def save_scan_result(
+        self,
+        product_id: int,
+        status_code: str,
+        http_code: int,
+        url_finale: str,
+        debug_info: str,
+    ):
         """Historise le résultat du scan de stock (Monitoring)."""
         now_utc = datetime.now(timezone.utc)
         new_entry_dict = {"status": status_code, "timestamp": now_utc.isoformat()}
@@ -132,9 +146,23 @@ class DatabaseManager:
         conn = self._get_connection()
         try:
             with conn.cursor() as cur:
-                cur.execute(query_fact, (product_id, now_utc, status_code, http_code, url_finale, debug_info))
-                cur.execute(query_dim, (now_utc, json.dumps(new_entry_dict), product_id))
-            logger.info(f"Monitoring : Statut {status_code} sauvegardé pour {product_id}")
+                cur.execute(
+                    query_fact,
+                    (
+                        product_id,
+                        now_utc,
+                        status_code,
+                        http_code,
+                        url_finale,
+                        debug_info,
+                    ),
+                )
+                cur.execute(
+                    query_dim, (now_utc, json.dumps(new_entry_dict), product_id)
+                )
+            logger.info(
+                f"Monitoring : Statut {status_code} sauvegardé pour {product_id}"
+            )
         finally:
             conn.close()
 

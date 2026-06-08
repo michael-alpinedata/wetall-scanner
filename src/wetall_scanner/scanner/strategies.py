@@ -8,10 +8,12 @@ from .constants import ScanStatus, MSG_BUY_BUTTON, MSG_OUT_OF_STOCK, MSG_NO_BUTT
 # Configuration du logger pour le module des stratégies
 logger = logging.getLogger(__name__)
 
+
 class BaseScanner(abc.ABC):
     """
     Interface de base pour tous les moteurs de scan marchands.
     """
+
     def __init__(self, merchant_name: str | None = None):
         # Charge la config du marchand si elle existe, sinon un dictionnaire vide
         self.config = MERCHANT_CONFIGS.get(merchant_name, {}) if merchant_name else {}
@@ -20,12 +22,14 @@ class BaseScanner(abc.ABC):
     def analyze(self, html_content: str) -> tuple[str, str]:
         pass
 
+
 class AmazonScanner(BaseScanner):
     """
     Scanner Amazon.fr optimisé, piloté par la configuration (Data-Driven).
     """
+
     def __init__(self):
-        super().__init__("amazon") # Lie ce scanner à la clé "amazon" dans config.py
+        super().__init__("amazon")  # Lie ce scanner à la clé "amazon" dans config.py
 
     def analyze(self, html_content: str) -> tuple[str, str]:
         # 1. Validation technique (Seuil à 100 pour laisser passer les tests)
@@ -33,8 +37,8 @@ class AmazonScanner(BaseScanner):
             msg = "Contenu HTML reçu vide ou trop court"
             logger.error(msg)
             return ScanStatus.ERREUR.value, msg
-            
-        soup = BeautifulSoup(html_content, 'html.parser')
+
+        soup = BeautifulSoup(html_content, "html.parser")
 
         # 2. Détection 404
         title = soup.select_one("title")
@@ -57,7 +61,7 @@ class AmazonScanner(BaseScanner):
             if any(word in text for word in out_of_stock_keywords):
                 logger.info(MSG_OUT_OF_STOCK)
                 return ScanStatus.HORS_STOCK.value, MSG_OUT_OF_STOCK
-        
+
         # 5. Vérification facultative du titre
         if not soup.select_one("#productTitle"):
             logger.warning("Titre du produit absent, mais l'analyse continue")
@@ -73,8 +77,11 @@ class DecathlonScanner(BaseScanner):
         super().__init__("decathlon")
 
     def analyze(self, html_content: str) -> tuple[str, str]:
-        logger.warning("DecathlonScanner: Tentative d'analyse sur une stratégie non implémentée.")
+        logger.warning(
+            "DecathlonScanner: Tentative d'analyse sur une stratégie non implémentée."
+        )
         return "Bloqué/Grisé", "Moteur de scan Decathlon en attente d'implémentation"
+
 
 class GenericScanner(BaseScanner):
     def __init__(self):
