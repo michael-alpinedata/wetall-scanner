@@ -1,3 +1,5 @@
+import time
+import random
 import logging
 from .database import DatabaseManager
 from .http_client import HTTPClient
@@ -111,46 +113,41 @@ class ScannerOrchestrator:
             target_url = p["url_marchand_finale"]
             vendeur = p["nom_vendeur"]
 
-            # Correction : Appel de la méthode interne _get_strategy
             strategy = self._get_strategy(vendeur)
 
-            # 1. Tentative Standard (Rapide, via httpx)
-            fetch_data = self.http.fetch(target_url)
-
-            # 2. Détection du blocage réseau frontal (ex: Cloudflare 403 sur Decathlon)
-            # Correction : Utilisation de "status_code" au lieu de "status"
-            if fetch_data["status_code"] in [403, 405, 407]:
-                logger.warning(
-                    f"Blocage HTTP {fetch_data['status_code']} détecté sur {vendeur}. Bascule en Stealth Mode..."
-                )
+            # 1. Sélection intelligente de la méthode de transport
+            # On évite le "test & fail" qui grille ton IP.
+            # On privilégie le furtif dès le départ pour les sites protégés.
+            if vendeur in ["Amazon", "Decathlon"]:
                 fetch_data = self.http.fetch_stealth(target_url)
+            else:
+                fetch_data = self.http.fetch(target_url)
 
-            # Analyse via la stratégie
+            # 2. Analyse initiale
             status_code, debug_info = strategy.analyze(
                 fetch_data["html"], url=target_url
             )
 
-            # 3. Détection du Soft-Block (ex: Captcha Amazon détecté par la stratégie)
+            # 3. Gestion de secours (Fallback) - UNIQUEMENT si le furtif échoue
+            # Si même le furtif détecte un blocage, on ne relance pas une 3ème fois
+            # pour ne pas amplifier le comportement robotique.
             if status_code == "ERREUR_TECHNIQUE" and "Captcha" in debug_info:
-                logger.warning(
-                    f"Soft-Block Amazon détecté pour {p_id}. Seconde tentative en Stealth Mode..."
-                )
-                fetch_data = self.http.fetch_stealth(target_url)
-                # On relance l'analyse sur le HTML propre (en croisant les doigts)
-                status_code, debug_info = strategy.analyze(
-                    fetch_data["html"], url=target_url
-                )
+                logger.warning(f"Blocage persistant sur {vendeur} pour {p_id}.")
+                # Ici : optionnellement, ajouter un délai aléatoire (sleep)
+                # ou marquer comme "A_VERIFIER" pour ne pas spammer.
 
-            # Sauvegarde du résultat (Historisation)
+            # Sauvegarde du résultat
             self.db.save_scan_result(
                 product_id=p_id,
                 status_code=status_code,
                 http_code=fetch_data["status_code"],
-                url_finale=target_url,  # Correction : Utilisation de target_url
+                url_finale=fetch_data["url_finale"],  # Utilise l'URL réelle du fetch
                 debug_info=debug_info,
             )
             results.append({"produit_id": p_id, "status": status_code})
 
-            logger.info(f"Produit {p_id} terminé avec statut: {status_code}")
+            # 4. Anti-détection : Pause aléatoire entre les produits
+            # Évite de faire des requêtes en rafale ("Burst")
+            time.sleep(random.uniform(2, 5))
 
         return results
