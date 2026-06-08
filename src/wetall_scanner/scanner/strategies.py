@@ -1,18 +1,26 @@
+import abc
 import logging
 from bs4 import BeautifulSoup
-import abc
 
 from .config import MERCHANT_CONFIGS
-from .constants import ScanStatus, MSG_BUY_BUTTON, MSG_OUT_OF_STOCK, MSG_NO_BUTTON
+from .constants import (
+    MSG_BUY_BUTTON,
+    MSG_HTML_EMPTY,
+    MSG_NO_BUTTON,
+    MSG_NOT_IMPLEMENTED,
+    MSG_OUT_OF_STOCK,
+    MSG_PAGE_404,
+    MSG_PRODUCT_TITLE_MISSING,
+    MSG_UNSUPPORTED_MERCHANT,
+    ScanStatus,
+)
 
 # Configuration du logger pour le module des stratégies
 logger = logging.getLogger(__name__)
 
 
 class BaseScanner(abc.ABC):
-    """
-    Interface de base pour tous les moteurs de scan marchands.
-    """
+    """Interface de base pour tous les moteurs de scan marchands."""
 
     def __init__(self, merchant_name: str | None = None):
         # Charge la config du marchand si elle existe, sinon un dictionnaire vide
@@ -24,9 +32,7 @@ class BaseScanner(abc.ABC):
 
 
 class AmazonScanner(BaseScanner):
-    """
-    Scanner Amazon.fr optimisé, piloté par la configuration (Data-Driven).
-    """
+    """Scanner Amazon.fr optimisé, piloté par la configuration (Data-Driven)."""
 
     def __init__(self):
         super().__init__("amazon")  # Lie ce scanner à la clé "amazon" dans config.py
@@ -34,18 +40,16 @@ class AmazonScanner(BaseScanner):
     def analyze(self, html_content: str) -> tuple[str, str]:
         # 1. Validation technique (Seuil à 100 pour laisser passer les tests)
         if not html_content or len(html_content) < 100:
-            msg = "Contenu HTML reçu vide ou trop court"
-            logger.error(msg)
-            return ScanStatus.ERREUR.value, msg
+            logger.error(MSG_HTML_EMPTY)
+            return ScanStatus.ERREUR.value, MSG_HTML_EMPTY
 
         soup = BeautifulSoup(html_content, "html.parser")
 
         # 2. Détection 404
         title = soup.select_one("title")
         if title and ("404" in title.text or "non trouvée" in title.text.lower()):
-            msg = "Page 404 détectée"
-            logger.warning(msg)
-            return ScanStatus.ERREUR.value, msg
+            logger.warning(MSG_PAGE_404)
+            return ScanStatus.ERREUR.value, MSG_PAGE_404
 
         # 3. Détection "EN STOCK" (Dynamique via config.py)
         in_stock_selectors = self.config.get("in_stock_selectors", [])
@@ -64,7 +68,7 @@ class AmazonScanner(BaseScanner):
 
         # 5. Vérification facultative du titre
         if not soup.select_one("#productTitle"):
-            logger.warning("Titre du produit absent, mais l'analyse continue")
+            logger.warning(MSG_PRODUCT_TITLE_MISSING)
 
         # 6. Fallback final (Message lu depuis config.py)
         fallback_msg = self.config.get("fallback_message", MSG_NO_BUTTON)
@@ -80,7 +84,7 @@ class DecathlonScanner(BaseScanner):
         logger.warning(
             "DecathlonScanner: Tentative d'analyse sur une stratégie non implémentée."
         )
-        return "Bloqué/Grisé", "Moteur de scan Decathlon en attente d'implémentation"
+        return ScanStatus.ERREUR.value, MSG_NOT_IMPLEMENTED
 
 
 class GenericScanner(BaseScanner):
@@ -89,4 +93,4 @@ class GenericScanner(BaseScanner):
 
     def analyze(self, html_content: str) -> tuple[str, str]:
         logger.info("GenericScanner: Utilisation du scanner de secours.")
-        return "À vérifier", "Marchand non supporté spécifiquement"
+        return ScanStatus.ERREUR.value, MSG_UNSUPPORTED_MERCHANT
