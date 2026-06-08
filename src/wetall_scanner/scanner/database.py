@@ -97,23 +97,48 @@ class DatabaseManager:
     # --- WORKFLOW 2 : MONITORING (Vérifier le Stock) ---
 
     def get_products_to_monitor(
-        self, vendor: str | None = None, limit: int = 10, product_id: int | None = None
+        self, limit: int = 50, vendor: str | None = None, prioritize_errors: bool = True
     ) -> list[dict]:
-        """Récupère les produits prêts pour le scan de stock (URL finale connue), avec ciblage possible."""
-        query = """
-            SELECT produit_id, url_marchand_finale, nom_vendeur 
-            FROM dim_produit 
-            WHERE is_active = True 
-            AND url_marchand_finale IS NOT NULL
         """
+        Récupère un lot de produits à scanner en priorité :
+        1. Les produits avec des codes erreur récents (403, 404, etc.)
+        2. Les produits scannés il y a le plus longtemps
+        """
+
+        # Base de la requête
+        query = """
+            SELECT p.produit_id, p.url_marchand_finale, p.nom_vendeur, s.status_code, s.date_scan
+            FROM dim_produit p
+            LEFT JOIN (
+                SELECT produit_id, status_code, date_scan
+                FROM fact_stock_status
+                WHERE (produit_id, date_scan) IN (
+                    SELECT produit_id, MAX(date_scan)
+                    FROM fact_stock_status
+                    GROUP BY produit_id
+                )
+            ) s ON p.produit_id = s.produit_id
+            WHERE p.is_active = True 
+            AND p.url_marchand_finale IS NOT NULL
+        """
+
         params = []
+
+        # Filtre optionnel par vendeur
         if vendor:
-            query += " AND nom_vendeur = %s"
+            query += " AND p.nom_vendeur = %s"
             params.append(vendor)
 
-        if product_id:
-            query += " AND produit_id = %s"
-            params.append(product_id)
+        # Logique de tri complexe
+        if prioritize_errors:
+            # On met en haut les produits dont le dernier code erreur est dans une liste "critique"
+            query += """ 
+                ORDER BY 
+                    (s.status_code IN ('403', '404', '500', 'ERREUR_RESEAU', 'BLOQUE_BOT')) DESC,
+                    s.date_scan ASC NULLS FIRST
+            """
+        else:
+            query += " ORDER BY s.date_scan ASC NULLS FIRST"
 
         query += " LIMIT %s;"
         params.append(limit)
