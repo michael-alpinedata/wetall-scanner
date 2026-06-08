@@ -103,7 +103,7 @@ class DecathlonScanner(BaseScanner):
     def __init__(self):
         super().__init__("decathlon")
 
-    def analyze(self, html_content: str) -> tuple[str, str]:
+    def analyze(self, html_content: str, url: str | None = None) -> tuple[str, str]:
         logger.warning(
             "DecathlonScanner: Tentative d'analyse sur une stratégie non implémentée."
         )
@@ -114,6 +114,6 @@ class GenericScanner(BaseScanner):
     def __init__(self):
         super().__init__(None)
 
-    def analyze(self, html_content: str) -> tuple[str, str]:
+    def analyze(self, html_content: str, url: str | None = None) -> tuple[str, str]:
         logger.info("GenericScanner: Utilisation du scanner de secours.")
         return ScanStatus.ERREUR.value, MSG_UNSUPPORTED_MERCHANT
