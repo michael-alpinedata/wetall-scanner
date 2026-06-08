@@ -97,7 +97,11 @@ class DatabaseManager:
     # --- WORKFLOW 2 : MONITORING (Vérifier le Stock) ---
 
     def get_products_to_monitor(
-        self, limit: int = 50, vendor: str | None = None, prioritize_errors: bool = True
+        self,
+        limit: int = 50,
+        vendor: str | None = None,
+        product_id: int | None = None,
+        prioritize_errors: bool = True,
     ) -> list[dict]:
         """
         Récupère un lot de produits à scanner en priorité :
@@ -123,6 +127,14 @@ class DatabaseManager:
         """
 
         params = []
+
+        # AJOUT DU FILTRE PRODUCT_ID
+        if product_id:
+            query += " AND p.produit_id = %s"
+            params.append(product_id)
+        elif vendor:  # Sinon on filtre par vendeur
+            query += " AND p.nom_vendeur = %s"
+            params.append(vendor)
 
         # Filtre optionnel par vendeur
         if vendor:

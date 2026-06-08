@@ -76,7 +76,7 @@ class ScannerOrchestrator:
         """Phase 2 : Surveillance par lot (utilise run_single_scan)."""
         # On utilise ta méthode de sélection optimisée
         products = self.db.get_products_to_monitor(
-            limit=limit, vendor=vendor, prioritize_errors=True
+            limit=limit, product_id=product_id, vendor=vendor
         )
 
         logger.info(f"Début monitoring pour {len(products)} produit(s).")
