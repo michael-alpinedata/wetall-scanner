@@ -74,14 +74,23 @@ class DatabaseManager:
         finally:
             conn.close()
 
-    def update_product_merchant_url(self, product_id: int, final_url: str):
-        """Enregistre l'URL finale découverte pour passer le produit en monitoring."""
-        query = "UPDATE dim_produit SET url_marchand_finale = %s WHERE produit_id = %s;"
+    def update_product_discovery_results(
+        self, product_id: int, final_url: str, vendor_name: str | None = None
+    ):
+        """Enregistre l'URL finale et le nom du vendeur découverts pour le produit."""
+        query = """
+            UPDATE dim_produit 
+            SET url_marchand_finale = %s,
+                nom_vendeur = COALESCE(%s, nom_vendeur)
+            WHERE produit_id = %s;
+        """
         conn = self._get_connection()
         try:
             with conn.cursor() as cur:
-                cur.execute(query, (final_url, product_id))
-            logger.info(f"Discovery : URL fixée pour le produit {product_id}")
+                cur.execute(query, (final_url, vendor_name, product_id))
+            logger.info(
+                f"Discovery : URL et vendeur mis à jour pour le produit {product_id}"
+            )
         finally:
             conn.close()
 
