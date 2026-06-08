@@ -1,0 +1,17 @@
+name: Cron Trigger Scan
+
+on:
+  schedule:
+    # 0,15,30,45 toutes les heures entre 21h et 04h UTC
+    - cron: '0,15,30,45 21-23,0-4 * * *'
+  workflow_dispatch:
+
+jobs:
+  trigger-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger API Scan
+        run: |
+          curl -X POST "${{ secrets.RENDER_API_URL }}/trigger-scan?mode=rescan&limit=200" \
+               -H "X-Secret-Key: ${{ secrets.SCAN_SECRET_KEY }}" \
+               -f
