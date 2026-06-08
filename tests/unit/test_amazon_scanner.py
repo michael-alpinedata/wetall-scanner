@@ -1,5 +1,5 @@
 import pytest
-from wetall_scanner.scanner.strategies.amazon import AmazonScanner
+from wetall_scanner.scanner.strategies import AmazonScanner
 from wetall_scanner.scanner.constants import ScanResult
 
 PADDING = " " * 1000
