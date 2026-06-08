@@ -37,15 +37,15 @@ class TestScannerOrchestrator:
 
     def test_run_link_discovery_success(self, orch):
         """
-        Vérifie que la découverte d'un lien Wetall entraîne
-        bien la mise à jour de l'URL finale en base.
+        Vérifie que la découverte d'un lien Wetall entraîne bien
+        la mise à jour combinée (URL + Vendeur) en base.
         """
         # Simulation d'un produit à découvrir
         orch.db.get_products_to_discover.return_value = [
             {"produit_id": 10, "url_wetall": "https://wetall.fr/p/10"}
         ]
 
-        # Simulation d'une redirection réussie
+        # Simulation d'une redirection réussie vers Amazon
         orch.http.fetch.return_value = {
             "status_code": 200,
             "url_finale": "https://www.amazon.fr/dp/B000XYZ",
@@ -55,18 +55,17 @@ class TestScannerOrchestrator:
 
         orch.run_link_discovery(limit=1)
 
-        # On vérifie que la DB a bien reçu l'ordre d'update avec l'URL finale
-        orch.db.update_product_merchant_url.assert_called_once_with(
-            10, "https://www.amazon.fr/dp/B000XYZ"
+        # On vérifie l'appel unique et combiné (ID, URL, Vendeur extrait)
+        orch.db.update_product_discovery_results.assert_called_once_with(
+            10, "https://www.amazon.fr/dp/B000XYZ", "Amazon"
         )
 
     def test_run_link_discovery_failure_stays_on_wetall(self, orch):
-        """Vérifie qu'on n'update pas la DB si le lien n'a pas été redirigé (reste sur Wetall)."""
+        """Vérifie qu'on n'update pas la DB si le lien reste sur Wetall."""
         orch.db.get_products_to_discover.return_value = [
             {"produit_id": 11, "url_wetall": "https://wetall.fr/p/11"}
         ]
 
-        # La redirection échoue ou renvoie sur Wetall
         orch.http.fetch.return_value = {
             "status_code": 200,
             "url_finale": "https://wetall.fr/p/11",
@@ -76,8 +75,8 @@ class TestScannerOrchestrator:
 
         orch.run_link_discovery(limit=1)
 
-        # L'update ne doit PAS être appelé
-        orch.db.update_product_merchant_url.assert_not_called()
+        # L'appel combiné ne doit PAS être déclenché
+        orch.db.update_product_discovery_results.assert_not_called()
 
     # --- TESTS DU WORKFLOW 2 : MONITORING ---
 
