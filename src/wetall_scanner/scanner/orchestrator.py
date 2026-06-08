@@ -4,7 +4,7 @@ import logging
 from .database import DatabaseManager
 from .http_client import HTTPClient
 from .extractor import WetallExtractor
-from .strategies.factory import ScannerFactory
+from .strategies import ScannerFactory
 
 # Configuration du logger pour le module orchestrator
 logger = logging.getLogger(__name__)
@@ -73,46 +73,69 @@ class ScannerOrchestrator:
     def run_stock_monitoring(
         self, vendor: str | None = None, limit: int = 10, product_id: int | None = None
     ):
-        """Phase 2 : Surveillance."""
+        """Phase 2 : Surveillance par lot (utilise run_single_scan)."""
+        # On utilise ta méthode de sélection optimisée
         products = self.db.get_products_to_monitor(
-            vendor=vendor, limit=limit, product_id=product_id
+            limit=limit, vendor=vendor, prioritize_errors=True
         )
+
         logger.info(f"Début monitoring pour {len(products)} produit(s).")
 
         results = []
         for p in products:
-            p_id = p["produit_id"]
-            target_url = p["url_marchand_finale"]
-            vendeur = p["nom_vendeur"]
+            # On délègue tout à la méthode unitaire
+            result = self.run_single_scan(p["produit_id"])
+            results.append({"produit_id": p["produit_id"], "status": result.code})
 
-            # 1. Transport (Fetch)
-            if vendeur in ["amazon", "decathlon"]:
-                fetch_data = self.http.fetch_stealth(target_url)
-            else:
-                fetch_data = self.http.fetch(target_url)
+            # La pause reste ici car elle concerne la gestion du flux de batch
+            time.sleep(random.uniform(2, 5))
 
-            # 2. Analyse métier (Déléguée à la stratégie via la factory)
-            scanner = ScannerFactory.get_scanner(vendeur)
-            scan_result = scanner.analyze(fetch_data, url=target_url)
+        return results
 
-            # 3. Actions réflexes de l'orchestrateur (Logique prioritaire anti-bot)
-            if scan_result.requires_action:
-                logger.warning(
-                    f"Action prioritaire ({scan_result.code}) sur {vendeur} pour {p_id}. Motif: {scan_result.message}"
-                )
+    def run_single_scan(self, product_id: int):
+        """Exécute le cycle de vie complet pour UN seul produit."""
+        # 1. Récupérer les infos du produit
+        product = self.db.get_product_by_id(product_id)
+        if not product:
+            logger.error(f"Produit {product_id} non trouvé en base.")
+            return
 
-            # 4. Sauvegarde du résultat
-            self.db.save_scan_result(
-                product_id=p_id,
-                status_code=scan_result.code,
-                http_code=fetch_data.get("status_code", 0),
-                url_finale=fetch_data.get("url_finale", target_url),
-                debug_info=scan_result.message,
-            )
+        target_url = product["url_marchand_finale"]
+        vendeur = product["nom_vendeur"]
 
-            results.append({"produit_id": p_id, "status": scan_result.code})
+        # 2. Fetch
+        if vendeur in ["amazon", "decathlon"]:
+            fetch_data = self.http.fetch_stealth(target_url)
+        else:
+            fetch_data = self.http.fetch(target_url)
 
-            # 5. Pause aléatoire
+        # 3. Analyse
+        scanner = ScannerFactory.get_scanner(vendeur)
+        scan_result = scanner.analyze(fetch_data, url=target_url)
+
+        # 4. Sauvegarde
+        self.db.save_scan_result(
+            product_id=product_id,
+            status_code=scan_result.code,
+            http_code=fetch_data.get("status_code", 0),
+            url_finale=fetch_data.get("url_finale", target_url),
+            debug_info=scan_result.message,
+        )
+        return scan_result
+
+    def run_batch(self, limit=50, vendor=None, prioritize_errors=True):
+        """Boucle de batch qui utilise run_single_scan."""
+        produits = self.db.get_products_to_monitor(
+            limit=limit, vendor=vendor, prioritize_errors=prioritize_errors
+        )
+
+        results = []
+        for p in produits:
+            # Utilisation de la méthode unitaire
+            res = self.run_single_scan(p["produit_id"])
+            results.append(res)
+
+            # Anti-ban
             time.sleep(random.uniform(2, 5))
 
         return results
