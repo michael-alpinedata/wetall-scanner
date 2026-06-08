@@ -3,10 +3,8 @@ import random
 import logging
 from .database import DatabaseManager
 from .http_client import HTTPClient
-from .strategies import AmazonScanner, DecathlonScanner, GenericScanner
 from .extractor import WetallExtractor
-
-from wetall_scanner.scanner.strategies import ScanStatus, MSG_PAGE_404
+from .factory import ScannerFactory
 
 # Configuration du logger pour le module orchestrator
 logger = logging.getLogger(__name__)
@@ -18,37 +16,13 @@ class ScannerOrchestrator:
     Lie la base de données, le client HTTP et les stratégies d'analyse.
     """
 
-    # Mapping entre le nom du vendeur en DB et la classe de stratégie
-    STRATEGY_MAP = {
-        "amazon": AmazonScanner(),
-        "decathlon": DecathlonScanner(),
-    }
-
     def __init__(
         self, db: DatabaseManager, http: HTTPClient, extractor: WetallExtractor
     ):
         self.db = db
         self.http = http
         self.extractor = extractor
-        self.default_strategy = GenericScanner()
         logger.debug("ScannerOrchestrator initialisé avec ses sous-composants.")
-
-    def _get_strategy(self, vendor_name: str):
-        """Récupère la stratégie correspondante ou le scanner générique."""
-        if not vendor_name:
-            logger.debug(
-                "Nom de vendeur absent, utilisation de la stratégie par défaut."
-            )
-            return self.default_strategy
-
-        strategy = self.STRATEGY_MAP.get(vendor_name.lower())
-        if strategy:
-            return strategy
-
-        logger.debug(
-            f"Aucune stratégie spécifique trouvée pour '{vendor_name}', passage au GenericScanner."
-        )
-        return self.default_strategy
 
     def run_link_discovery(self, limit: int = 10, product_id: int | None = None):
         """
@@ -117,36 +91,26 @@ class ScannerOrchestrator:
             else:
                 fetch_data = self.http.fetch(target_url)
 
-            # Extraction sécurisée des données de fetch
-            http_status = fetch_data.get("status_code", 0)
-            html_content = fetch_data.get("html", "")
-            url_finale = fetch_data.get("url_finale", target_url)
+            # 2. Analyse métier (Déléguée à la stratégie via la factory)
+            scanner = ScannerFactory.get_scanner(vendeur)
+            scan_result = scanner.analyze(fetch_data, url=target_url)
 
-            # 2. Gestion des erreurs HTTP AVANT l'analyse métier
-            if http_status == 404:
-                scan_status = ScanStatus.ERREUR.value
-                debug_info = MSG_PAGE_404
-            elif http_status != 200:
-                scan_status = ScanStatus.ERREUR.value
-                debug_info = f"HTTP Error {http_status}"
-            else:
-                # 3. Analyse métier (seulement si status 200)
-                strategy = self._get_strategy(vendeur)
-                scan_status, debug_info = strategy.analyze(html_content, url=target_url)
+            # 3. Actions réflexes de l'orchestrateur (Logique prioritaire anti-bot)
+            if scan_result.requires_action:
+                logger.warning(
+                    f"Action prioritaire ({scan_result.code}) sur {vendeur} pour {p_id}. Motif: {scan_result.message}"
+                )
 
-                # 4. Gestion spécifique Anti-bot
-                if scan_status == ScanStatus.ERREUR.value and "Captcha" in debug_info:
-                    logger.warning(f"Blocage persistant sur {vendeur} pour {p_id}.")
-
-            # Sauvegarde du résultat
+            # 4. Sauvegarde du résultat
             self.db.save_scan_result(
                 product_id=p_id,
-                status_code=scan_status,
-                http_code=http_status,
-                url_finale=url_finale,
-                debug_info=debug_info,
+                status_code=scan_result.code,
+                http_code=fetch_data.get("status_code", 0),
+                url_finale=fetch_data.get("url_finale", target_url),
+                debug_info=scan_result.message,
             )
-            results.append({"produit_id": p_id, "status": scan_status})
+
+            results.append({"produit_id": p_id, "status": scan_result.code})
 
             # 5. Pause aléatoire
             time.sleep(random.uniform(2, 5))
