@@ -44,7 +44,7 @@ class DatabaseManager:
             logger.exception("Impossible d'établir une connexion à la base de données.")
             raise
 
-def get_products_to_discover(self, limit: int = 10, product_id: int | None = None) -> list[dict]:
+    def get_products_to_discover(self, limit: int = 10, product_id: int | None = None) -> list[dict]:
         """Récupère les produits à découvrir, avec possibilité de cibler un ID précis."""
         query = """
             SELECT produit_id, url_wetall, nom_vendeur 
@@ -82,8 +82,8 @@ def get_products_to_discover(self, limit: int = 10, product_id: int | None = Non
 
     # --- WORKFLOW 2 : MONITORING (Vérifier le Stock) ---
 
-    def get_products_to_monitor(self, vendor: str | None = None, limit: int = 10) -> list[dict]:
-        """Récupère les produits prêts pour le scan de stock (URL finale connue)."""
+    def get_products_to_monitor(self, vendor: str | None = None, limit: int = 10, product_id: int | None = None) -> list[dict]:
+        """Récupère les produits prêts pour le scan de stock (URL finale connue), avec ciblage possible."""
         query = """
             SELECT produit_id, url_marchand_finale, nom_vendeur 
             FROM dim_produit 
@@ -94,6 +94,10 @@ def get_products_to_discover(self, limit: int = 10, product_id: int | None = Non
         if vendor:
             query += " AND nom_vendeur = %s"
             params.append(vendor)
+            
+        if product_id:
+            query += " AND produit_id = %s"
+            params.append(product_id)
         
         query += " LIMIT %s;"
         params.append(limit)
@@ -134,6 +138,21 @@ def get_products_to_discover(self, limit: int = 10, product_id: int | None = Non
         finally:
             conn.close()
 
+    def get_product_by_id(self, product_id: int) -> dict | None:
+        """Récupère un produit spécifique par son ID (Principalement pour les vérifications de test)."""
+        query = """
+            SELECT produit_id, url_wetall, url_marchand_finale, nom_vendeur, is_active 
+            FROM public.dim_produit 
+            WHERE produit_id = %s;
+        """
+        conn = self._get_connection()
+        try:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(query, (product_id,))
+                row = cur.fetchone()
+                return dict(row) if row else None
+        finally:
+            conn.close()
 
     def insert_product(self, product_data: dict) -> int:
         """
