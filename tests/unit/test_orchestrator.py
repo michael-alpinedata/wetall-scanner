@@ -55,7 +55,7 @@ class TestScannerOrchestrator:
             "error": None,
         }
 
-        orch.extract_merchant_name.return_value = "amazon"
+        orch.extractor.extract_merchant_name.return_value = "amazon"
 
         # 3. On appelle le run en passant le product_id
         orch.run_link_discovery(limit=1, product_id=target_id)
