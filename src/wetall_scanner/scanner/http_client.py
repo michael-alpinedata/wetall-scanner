@@ -3,6 +3,10 @@ import random
 import logging
 from typing import TypedDict, Optional
 
+from curl_cffi import requests as cffi_requests
+from curl_cffi.requests.errors import RequestsError
+
+
 # Configuration du logger pour le module réseau
 logger = logging.getLogger(__name__)
 
@@ -103,3 +107,30 @@ class HTTPClient:
                 "url_finale": url,
                 "error": f"Exception: {str(e)[:50]}",
             }
+
+    def fetch_stealth(self, url: str) -> dict:
+        """
+        Effectue une requête ultra-furtive en imitant la signature TLS et les headers de Chrome.
+        Idéal pour contourner Cloudflare (Decathlon) et le WAF basique d'Amazon.
+        """
+        logger.info(f"Stealth Fetch: Tentative de contournement anti-bot pour {url}")
+
+        try:
+            # impersonate="chrome124" modifie le moteur TLS pour qu'il soit identique à Chrome
+            response = cffi_requests.get(
+                url,
+                impersonate="chrome124",
+                timeout=15,
+                # Optionnel : proxies={"http": "ton_proxy", "https": "ton_proxy"}
+            )
+
+            # On retourne la même structure de dictionnaire que ton httpx
+            return {
+                "status": response.status_code,
+                "html": response.text,
+                "final_url": str(response.url),
+            }
+
+        except RequestsError as e:
+            logger.error(f"Erreur Stealth Fetch sur {url}: {e}")
+            return {"status": 500, "html": "", "final_url": url}

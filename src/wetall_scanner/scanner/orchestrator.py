@@ -100,8 +100,6 @@ class ScannerOrchestrator:
         Vérifie le stock sur les URLs marchandes déjà connues.
         Possibilité de cibler un `product_id` précis.
         """
-        # Note : Pense à ajouter `product_id: int | None = None` dans la signature
-        # de db.get_products_to_monitor si tu veux aussi pouvoir cibler le monitoring.
         products = self.db.get_products_to_monitor(
             vendor=vendor, limit=limit, product_id=product_id
         )
@@ -110,19 +108,37 @@ class ScannerOrchestrator:
         results = []
         for p in products:
             p_id = p["produit_id"]
-            # ICI : On utilise l'URL finale, plus l'URL Wetall
-            url_to_scan = p["url_marchand_finale"]
+            target_url = p["url_marchand_finale"]
+            vendeur = p["nom_vendeur"]
 
-            fetch_data = self.http.fetch(url_to_scan)
-            strategy = self._get_strategy(p["nom_vendeur"])
+            # Correction : Appel de la méthode interne _get_strategy
+            strategy = self._get_strategy(vendeur)
 
-            if fetch_data["status_code"] == 404:
-                status_code, debug_info = "Lien Brisé", "Page 404"
-            elif fetch_data["error"]:
-                status_code, debug_info = "Erreur", fetch_data["error"]
-            else:
+            # 1. Tentative Standard (Rapide, via httpx)
+            fetch_data = self.http.fetch(target_url)
+
+            # 2. Détection du blocage réseau frontal (ex: Cloudflare 403 sur Decathlon)
+            # Correction : Utilisation de "status_code" au lieu de "status"
+            if fetch_data["status_code"] in [403, 405, 407]:
+                logger.warning(
+                    f"Blocage HTTP {fetch_data['status_code']} détecté sur {vendeur}. Bascule en Stealth Mode..."
+                )
+                fetch_data = self.http.fetch_stealth(target_url)
+
+            # Analyse via la stratégie
+            status_code, debug_info = strategy.analyze(
+                fetch_data["html"], url=target_url
+            )
+
+            # 3. Détection du Soft-Block (ex: Captcha Amazon détecté par la stratégie)
+            if status_code == "ERREUR_TECHNIQUE" and "Captcha" in debug_info:
+                logger.warning(
+                    f"Soft-Block Amazon détecté pour {p_id}. Seconde tentative en Stealth Mode..."
+                )
+                fetch_data = self.http.fetch_stealth(target_url)
+                # On relance l'analyse sur le HTML propre (en croisant les doigts)
                 status_code, debug_info = strategy.analyze(
-                    html_content=fetch_data["html"], url=p["url_marchand_finale"]
+                    fetch_data["html"], url=target_url
                 )
 
             # Sauvegarde du résultat (Historisation)
@@ -130,10 +146,11 @@ class ScannerOrchestrator:
                 product_id=p_id,
                 status_code=status_code,
                 http_code=fetch_data["status_code"],
-                url_finale=url_to_scan,
+                url_finale=target_url,  # Correction : Utilisation de target_url
                 debug_info=debug_info,
             )
             results.append({"produit_id": p_id, "status": status_code})
 
-            logger.info(f"Produit {p_id} terminé")
+            logger.info(f"Produit {p_id} terminé avec statut: {status_code}")
+
         return results
