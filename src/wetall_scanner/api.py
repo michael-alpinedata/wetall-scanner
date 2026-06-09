@@ -15,9 +15,14 @@ from wetall_scanner.scanner.extractor import WetallExtractor
 
 load_dotenv()
 
-# Configuration du logging
+# --- MODIFICATION 1 : Double destination pour les logs (Console + Fichier) ---
 logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
+    level=logging.INFO, 
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[
+        logging.FileHandler("app.log", encoding="utf-8"),  # Sauvegarde pour Streamlit
+        logging.StreamHandler(sys.stdout)                  # Conserve l'affichage sur Render
+    ]
 )
 logger = logging.getLogger(__name__)
 
@@ -71,6 +76,28 @@ async def trigger_scan(
     background_tasks.add_task(run_pipeline, limit=limit, mode=mode)
 
     return {"message": f"Scan '{mode}' lancé avec succès", "limit": limit}
+
+
+# --- MODIFICATION 2 : Le nouvel endpoint sécurisé pour extraire les logs ---
+@app.get("/logs")
+async def get_logs(x_secret_key: str = Header(..., alias="X-Secret-Key")):
+    # Même niveau de sécurité que pour le lancement du scan
+    if x_secret_key != API_SECRET:
+        raise HTTPException(status_code=401, detail="Clé invalide")
+    
+    log_file = "app.log"
+    if not os.path.exists(log_file):
+        return {"logs": "Aucun log disponible pour le moment. Lancez un scan !"}
+    
+    try:
+        with open(log_file, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+            # On extrait les 150 dernières lignes pour un affichage léger et rapide
+            dernieres_lignes = "".join(lines[-150:])
+            return {"logs": dernieres_lignes}
+    except Exception as e:
+        logger.error(f"Erreur lors de la lecture du fichier de logs : {e}")
+        raise HTTPException(status_code=500, detail="Impossible de lire les logs du serveur.")
 
 
 if __name__ == "__main__":
