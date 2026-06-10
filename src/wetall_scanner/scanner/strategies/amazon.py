@@ -41,8 +41,34 @@ class AmazonScanner(BaseScanner):
         return False
 
     def is_in_stock(self, soup: BeautifulSoup) -> bool:
+        # 1. Stratégie classique : Sélecteurs de la config (ex: #add-to-cart-button)
         in_stock_selectors = self.config.get("in_stock_selectors", [])
-        return any(soup.select_one(sel) for sel in in_stock_selectors)
+        if any(soup.select_one(sel) for sel in in_stock_selectors):
+            return True
+
+        # 2. Stratégie "Multi-vendeurs" : Détection du bouton 'Voir toutes les offres disponibles'
+        # Amazon utilise ces IDs/Classes selon les variantes de mise en page (Desktop vs Mobile layout)
+        alt_buybox_selectors = [
+            "#buybox-see-all-buying-options",
+            "#buybox-see-all-buying-options-announce",
+            "#olpLinkWidget_html",
+            ".olp-touch-link",
+            "#unqualifiedBuyBox",
+        ]
+        if any(soup.select_one(sel) for sel in alt_buybox_selectors):
+            return True
+
+        # 3. Filet de sécurité textuel : Si les sélecteurs sautent mais que le texte est là dans la zone d'achat
+        buybox = soup.select_one("#buybox, #rightCol")
+        if buybox:
+            buybox_text = buybox.get_text().lower()
+            if (
+                "voir toutes les offres" in buybox_text
+                or "buying options" in buybox_text
+            ):
+                return True
+
+        return False
 
     def has_valid_structure(self, soup: BeautifulSoup) -> bool:
         return bool(soup.select_one("#productTitle"))
