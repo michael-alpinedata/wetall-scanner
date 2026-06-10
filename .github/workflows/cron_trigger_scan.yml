@@ -5,6 +5,28 @@ on:
     # 0,15,30,45 toutes les heures entre 21h et 04h UTC
     - cron: '0,15,30,45 21-23,0-4 * * *'
   workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Mode de scan'
+        required: true
+        default: 'rescan'
+        type: choice
+        options:
+          - rescan
+          - discover
+      limit:
+        description: 'Nombre limite de produits'
+        required: true
+        default: '700'
+        type: string
+      vendor:
+        description: 'Vendeur spécifique (optionnel, ex: amazon)'
+        required: false
+        type: string
+      product_id:
+        description: 'ID Produit spécifique (optionnel)'
+        required: false
+        type: string
 
 jobs:
   trigger-scan:
@@ -12,6 +34,26 @@ jobs:
     steps:
       - name: Trigger API Scan
         run: |
-          curl -X POST "${{ secrets.RENDER_API_URL }}/trigger-scan?mode=rescan&limit=700" \
+          # Fallback sur les valeurs par défaut si déclenché par le Cron
+          MODE="${{ github.event.inputs.mode || 'rescan' }}"
+          LIMIT="${{ github.event.inputs.limit || '700' }}"
+          VENDOR="${{ github.event.inputs.vendor }}"
+          PRODUCT_ID="${{ github.event.inputs.product_id }}"
+          
+          # Construction de l'URL de base
+          URL="${{ secrets.RENDER_API_URL }}/trigger-scan?mode=${MODE}&limit=${LIMIT}"
+          
+          # Ajout dynamique des filtres si tu les as saisis manuellement sur GitHub
+          if [ -n "$VENDOR" ]; then
+            URL="${URL}&vendor=${VENDOR}"
+          fi
+          
+          if [ -n "$PRODUCT_ID" ]; then
+            URL="${URL}&product_id=${PRODUCT_ID}"
+          fi
+          
+          echo "🚀 Requête envoyée : $URL"
+          
+          curl -X POST "$URL" \
                -H "X-Secret-Key: ${{ secrets.SCAN_SECRET_KEY }}" \
                -f
