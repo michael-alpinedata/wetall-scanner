@@ -1,6 +1,5 @@
 from enum import Enum
 
-
 class ScanResult(Enum):
     # Format : NOM = (Code_Status, Message_Par_Defaut, is_error, requires_action)
 
@@ -73,3 +72,22 @@ class ScanResult(Enum):
     @property
     def requires_action(self):
         return self._requires_action
+
+
+class FilterStatus(str, Enum):
+    """
+    Enum spécifique pour la validation des requêtes FastAPI (query parameters).
+    Les valeurs correspondent exactement à celles de ScanResult.code pour faire le pont avec la DB.
+    """
+    EN_STOCK = "EN_STOCK"
+    HORS_STOCK = "HORS_STOCK"
+    NO_BUTTON = "NO_BUTTON"
+    BLOQUE_BOT = "BLOQUE_BOT"
+    BLOQUE_IP = "BLOQUE_IP"
+    TIMEOUT = "TIMEOUT"
+    ERREUR_RESEAU = "ERREUR_RESEAU"
+    STRUCTURE_CHANGEE = "STRUCTURE_CHANGEE"
+    PAGE_404 = "PAGE_404"
+    A_VERIFIER = "A_VERIFIER"
+    HTML_TROP_COURT = "HTML_TROP_COURT"
+    ERREUR_CONFIG = "ERREUR_CONFIG"

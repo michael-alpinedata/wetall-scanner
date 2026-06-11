@@ -3,38 +3,18 @@ import logging
 import os
 import sys
 from typing import Literal, Optional
-from enum import Enum
 
 from dotenv import load_dotenv
 from fastapi import BackgroundTasks, FastAPI, Header, HTTPException
 
-# Import de tes classes métier
+# Import de tes classes métier et constantes
 from wetall_scanner.scanner.orchestrator import ScannerOrchestrator
 from wetall_scanner.scanner.database import DatabaseManager
 from wetall_scanner.scanner.http_client import HTTPClient
 from wetall_scanner.scanner.extractor import WetallExtractor
+from wetall_scanner.scanner.constants import FilterStatus
 
 load_dotenv()
-
-# --- ENUMS POUR LA VALIDATION API ---
-class FilterStatus(str, Enum):
-    """
-    Enum aligné sur les codes de la base de données (fact_stock_status).
-    Garantit que l'API n'accepte que des valeurs existantes en base.
-    """
-    EN_STOCK = "EN_STOCK"
-    HORS_STOCK = "HORS_STOCK"
-    NO_BUTTON = "NO_BUTTON"
-    BLOQUE_BOT = "BLOQUE_BOT"
-    BLOQUE_IP = "BLOQUE_IP"
-    TIMEOUT = "TIMEOUT"
-    ERREUR_RESEAU = "ERREUR_RESEAU"
-    STRUCTURE_CHANGEE = "STRUCTURE_CHANGEE"
-    PAGE_404 = "PAGE_404"
-    A_VERIFIER = "A_VERIFIER"
-    HTML_TROP_COURT = "HTML_TROP_COURT"
-    ERREUR_CONFIG = "ERREUR_CONFIG"
-
 
 # --- CONFIGURATION LOGS ---
 logging.basicConfig(
@@ -100,7 +80,7 @@ async def trigger_scan(
     limit: int = 50,
     vendor: Optional[str] = None, # TODO: À remplacer par un Enum VendorList plus tard
     product_id: Optional[int] = None,
-    status_filter: Optional[FilterStatus] = None, # Validation stricte ici
+    status_filter: Optional[FilterStatus] = None, # Validation via l'Enum importé
 ):
     if x_secret_key != API_SECRET:
         raise HTTPException(status_code=401, detail="Clé invalide")
@@ -137,7 +117,6 @@ async def get_logs(x_secret_key: str = Header(..., alias="X-Secret-Key")):
     try:
         with open(log_file, "r", encoding="utf-8") as f:
             lines = f.readlines()
-            # On extrait les 150 dernières lignes pour un affichage léger et rapide
             dernieres_lignes = "".join(lines[-150:])
             return {"logs": dernieres_lignes}
     except Exception as e:
