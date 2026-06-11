@@ -2,54 +2,21 @@ from enum import Enum
 
 class ScanResult(Enum):
     # Format : NOM = (Code_Status, Message_Par_Defaut, is_error, requires_action)
-
-    # --- Succès ---
+    
+    # --- Succès & État ---
     EN_STOCK = ("EN_STOCK", "Bouton d'achat détecté", False, False)
     HORS_STOCK = ("HORS_STOCK", "Rupture de stock", False, False)
-    NO_BUTTON = ("NO_BUTTON", "Aucun bouton trouvé", False, False)
-
+    
     # --- Infrastructure / Blocage ---
-    BLOQUE_CAPTCHA = (
-        "BLOQUE_BOT",
-        "Blocage antibot détecté (captcha ou autre)",
-        True,
-        True,
-    )
-    BLOCK_IP = ("BLOQUE_IP", "Blocage IP suspecté (Rate limiting)", True, True)
-    TIMEOUT = ("TIMEOUT", "Le délai d'attente a été dépassé", True, True)
+    BLOQUE_BOT = ("BLOQUE_BOT", "Blocage antibot détecté", True, True)
     ERREUR_RESEAU = ("ERREUR_RESEAU", "Erreur de connexion réseau", True, True)
-
+    
     # --- Structure & Maintenance ---
-    STRUCT_CHANGEE = (
-        "STRUCTURE_CHANGEE",
-        "Structure CSS modifiée (sélecteur introuvable)",
-        True,
-        False,
-    )
     PAGE_404 = ("PAGE_404", "Page introuvable (404)", True, False)
-    STRUCT_TITLE_MISSING = ("A_VERIFIER", "Titre du produit absent", True, False)
-
-    # --- Technique ---
-    HTML_EMPTY = (
-        "HTML_TROP_COURT",
-        "Contenu HTML reçu vide ou trop court",
-        True,
-        False,
-    )
-
+    
     # --- Cas indéterminés & Configuration ---
-    A_VERIFIER = (
-        "A_VERIFIER",
-        "Statut ambigu : produit détecté mais paramètres inconnus",
-        True,
-        False,
-    )
-    VENDEUR_NON_GERE = (
-        "ERREUR_CONFIG",
-        "Vendeur non supporté par la plateforme",
-        True,
-        False,
-    )
+    A_VERIFIER = ("A_VERIFIER", "Produit détecté mais ambigu", True, False)
+    ERREUR_CONFIG = ("ERREUR_CONFIG", "Vendeur non supporté", True, False)
 
     def __init__(self, code, message, is_error, requires_action):
         self._code = code
@@ -58,36 +25,13 @@ class ScanResult(Enum):
         self._requires_action = requires_action
 
     @property
-    def code(self):
-        return self._code
-
+    def code(self): return self._code
     @property
-    def message(self):
-        return self._message
-
+    def message(self): return self._message
     @property
-    def is_error(self):
-        return self._is_error
-
+    def is_error(self): return self._is_error
     @property
-    def requires_action(self):
-        return self._requires_action
+    def requires_action(self): return self._requires_action
 
-
-class FilterStatus(str, Enum):
-    """
-    Enum spécifique pour la validation des requêtes FastAPI (query parameters).
-    Les valeurs correspondent exactement à celles de ScanResult.code pour faire le pont avec la DB.
-    """
-    EN_STOCK = "EN_STOCK"
-    HORS_STOCK = "HORS_STOCK"
-    NO_BUTTON = "NO_BUTTON"
-    BLOQUE_BOT = "BLOQUE_BOT"
-    BLOQUE_IP = "BLOQUE_IP"
-    TIMEOUT = "TIMEOUT"
-    ERREUR_RESEAU = "ERREUR_RESEAU"
-    STRUCTURE_CHANGEE = "STRUCTURE_CHANGEE"
-    PAGE_404 = "PAGE_404"
-    A_VERIFIER = "A_VERIFIER"
-    HTML_TROP_COURT = "HTML_TROP_COURT"
-    ERREUR_CONFIG = "ERREUR_CONFIG"
+# Enum pour la validation API restreint aux valeurs réelles
+FilterStatus = Enum("FilterStatus", {item.code: item.code for item in ScanResult})
