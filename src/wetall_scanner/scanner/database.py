@@ -102,6 +102,7 @@ class DatabaseManager:
         vendor: str | None = None,
         product_id: int | None = None,
         prioritize_errors: bool = True,
+        status_filter=None,
     ) -> list[dict]:
         """
         Récupère un lot de produits à scanner en priorité :
@@ -132,14 +133,15 @@ class DatabaseManager:
         if product_id:
             query += " AND p.produit_id = %s"
             params.append(product_id)
-        elif vendor:  # Sinon on filtre par vendeur
-            query += " AND p.nom_vendeur = %s"
-            params.append(vendor)
 
         # Filtre optionnel par vendeur
         if vendor:
             query += " AND p.nom_vendeur = %s"
             params.append(vendor)
+        
+        if status_filter:
+            query += " AND s.status_code = %s"
+            params.append(status_filter)
 
         # Logique de tri complexe
         if prioritize_errors:

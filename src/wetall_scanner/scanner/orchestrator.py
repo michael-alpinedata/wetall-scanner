@@ -71,15 +71,23 @@ class ScannerOrchestrator:
                 logger.warning(f"Échec discovery pour {p_id}")
 
     def run_stock_monitoring(
-        self, vendor: str | None = None, limit: int = 10, product_id: int | None = None
+        self, 
+        vendor: str | None = None, 
+        limit: int = 10, 
+        product_id: int | None = None,
+        status_filter: str | None = None  # NOUVEAU : Paramètre de filtrage
     ):
-        """Phase 2 : Surveillance par lot (utilise run_single_scan)."""
-        # On utilise ta méthode de sélection optimisée
+        """Phase 2 : Surveillance par lot avec filtrage optionnel."""
+        
+        # Transmission du filtre au gestionnaire de base de données
         products = self.db.get_products_to_monitor(
-            limit=limit, product_id=product_id, vendor=vendor
+            limit=limit, 
+            product_id=product_id, 
+            vendor=vendor,
+            status_filter=status_filter # Passage du filtre ici
         )
 
-        logger.info(f"Début monitoring pour {len(products)} produit(s).")
+        logger.info(f"Début monitoring pour {len(products)} produit(s) (Filtre: {status_filter})")
 
         results = []
         for p in products:
@@ -91,7 +99,7 @@ class ScannerOrchestrator:
             time.sleep(random.uniform(2, 5))
 
         return results
-
+        
     def run_single_scan(self, product_id: int):
         """Exécute le cycle de vie complet pour UN seul produit."""
         # 1. Récupérer les infos du produit
@@ -108,6 +116,26 @@ class ScannerOrchestrator:
             fetch_data = self.http.fetch_stealth(target_url)
         else:
             fetch_data = self.http.fetch(target_url)
+
+
+        # ==========================================
+        # 🛑 INJECTION DU DUMP DE DEBUG ICI 🛑
+        # ==========================================
+        # Adapte la clé ("html", "text", "content") selon ce que retourne ton HTTPClient
+        html_content = fetch_data.get("html") or fetch_data.get("text") or fetch_data.get("content") or ""
+        
+        if html_content:
+            timestamp = int(time.time())
+            safe_vendor = str(vendeur).replace("/", "_").replace(" ", "")
+            filename = f"dump_{safe_vendor}_id{product_id}_{timestamp}.html"
+            
+            with open(filename, "w", encoding="utf-8") as f:
+                f.write(html_content)
+                
+            logger.info(f"🕵️ HTML sauvegardé localement : {filename}")
+        else:
+            logger.warning(f"⚠️ Impossible de dumper {product_id} : aucun contenu HTML trouvé dans fetch_data.")
+        # ==========================================
 
         # 3. Analyse
         scanner = ScannerFactory.get_scanner(vendeur)

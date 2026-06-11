@@ -45,3 +45,4 @@ cython_debug/
 .aider*
 
 debug_dumps/*
+dump_*
